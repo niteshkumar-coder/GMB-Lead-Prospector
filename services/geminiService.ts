@@ -8,45 +8,43 @@ export const fetchGmbLeads = async (
   radius: number,
   userCoords?: { latitude: number, longitude: number }
 ): Promise<Lead[]> => {
-  // Use a fallback to check both window.process and process
   const apiKey = (window as any).process?.env?.API_KEY || process.env.API_KEY;
   
   if (!apiKey || apiKey.trim() === "") {
-    throw new Error("API_KEY is not set. Please ensure the 'API_KEY' environment variable is configured in your Vercel project settings.");
+    throw new Error("API_KEY is missing. Please configure it in your environment settings.");
   }
 
-  // Initializing inside the function to ensure the latest API key is used
   const ai = new GoogleGenAI({ apiKey });
   
-  /**
-   * Model Selection:
-   * Per instructions: "Maps grounding is only supported in Gemini 2.5 series models."
-   * The previous 'gemini-2.5-flash-lite-latest' returned 404. 
-   * Using 'gemini-2.5-flash' which is the canonical name used in the Maps Grounding documentation.
-   */
+  // Using gemini-2.5-flash for reliable Maps Grounding
   const model = "gemini-2.5-flash"; 
   
-  const prompt = `You are a professional GMB Lead Prospector and SEO expert. 
-  TASK: Find between 100 to 200 businesses for the keyword "${keyword}" in "${location}" within a ${radius}km radius.
+  // Define the reference point for the prompt
+  const referencePoint = userCoords 
+    ? `the user's current GPS coordinates (${userCoords.latitude}, ${userCoords.longitude})`
+    : `the geographic center of ${location}`;
+
+  const prompt = `You are an expert GMB Lead Generator. 
+  TASK: Find exactly 100 to 200 businesses for the keyword "${keyword}" in or around "${location}" within a ${radius}km radius.
   
-  FILTERING RULES:
-  1. Only include businesses that are ranking BELOW the top 5 (GMB position 6th or lower).
-  2. These are leads that need SEO help to reach the top 3-5.
-  3. For each business, collect: 
+  CRITICAL INSTRUCTIONS:
+  1. TARGET LEADS: Only include businesses ranking 6th or lower (not in the top 5).
+  2. DISTANCE: Calculate the distance for every business relative to ${referencePoint}. This is the most important field.
+  3. DATA COLLECTION: 
      - Business Name
      - Phone Number
-     - GMB Ranking Position (Estimate if needed, e.g., 12th, 45th)
-     - Website URL (write "None" if not available)
-     - Maps Location Link
+     - GMB Rank (Estimate position like 7th, 15th, 88th)
+     - Website URL (Write "None" if not available)
+     - Google Maps Link
      - Rating (Star rating)
-     - Distance from center of ${location}
+     - Distance (e.g., "1.2 km", "5.4 km")
 
   OUTPUT FORMAT:
-  Return the results ONLY as a Markdown table. Do not include any chat or intro.
+  Return ONLY a Markdown table. Do not include any introductory text.
   Headers: | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |
   | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 
-  CRITICAL: Provide as many leads as possible. If you cannot reach 200 in one go, provide the maximum possible number (at least 50-100).`;
+  Maximize the output to reach as close to 200 leads as possible. If the area is small, find all available businesses beyond the top 5.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -54,7 +52,6 @@ export const fetchGmbLeads = async (
       contents: prompt,
       config: {
         tools: [{ googleMaps: {} }, { googleSearch: {} }],
-        // Maps Grounding requires coordinates if available for better accuracy
         toolConfig: {
           retrievalConfig: {
             latLng: userCoords ? {
@@ -63,37 +60,26 @@ export const fetchGmbLeads = async (
             } : undefined
           }
         },
-        // We want a long response for 100+ leads
-        maxOutputTokens: 15000,
-        thinkingConfig: { thinkingBudget: 5000 }
+        maxOutputTokens: 20000, // High token count for 100-200 leads
+        temperature: 0.2 // Lower temperature for more consistent table formatting
       },
     });
 
     const text = response.text || "";
-    if (!text || text.length < 50) {
-      throw new Error("The model returned insufficient data. Please try again or refine your keyword.");
+    if (!text || text.length < 100) {
+      throw new Error("The search returned insufficient data. Please try a broader keyword or a larger radius.");
     }
 
     const leads = parseLeadsFromMarkdown(text, keyword);
     
     if (leads.length === 0) {
-      throw new Error("Could not parse table data from the AI response. Please try again.");
+      throw new Error("Found results but could not format them into a table. Please try searching again.");
     }
 
     return leads;
   } catch (error: any) {
-    console.error("Gemini Prospector Error:", error);
-    
-    // Handle specific status codes or error messages
-    if (error?.message?.includes('404')) {
-      throw new Error(`Model not found or unavailable. Please contact support. (Model: ${model})`);
-    }
-    
-    if (error?.message?.includes('API key')) {
-      throw new Error("The API Key is invalid or restricted. Check your Google AI Studio settings.");
-    }
-
-    throw error;
+    console.error("Prospecting Error:", error);
+    throw new Error(error?.message || "An error occurred while scanning Google Maps.");
   }
 };
 
@@ -101,48 +87,28 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
   const lines = md.split('\n');
   const leads: Lead[] = [];
   
-  // Locate the header separator line
   const separatorIndex = lines.findIndex(l => l.includes('|') && l.includes('---'));
-  if (separatorIndex === -1) {
-    // Try to find the first line with at least 5 pipes as a fallback
-    const firstTableLine = lines.findIndex(l => (l.match(/\|/g) || []).length >= 6);
-    if (firstTableLine === -1) return [];
-  }
+  if (separatorIndex === -1) return [];
 
-  const startIdx = separatorIndex !== -1 ? separatorIndex + 1 : 0;
-  const dataLines = lines.slice(startIdx);
+  const dataLines = lines.slice(separatorIndex + 1);
 
   dataLines.forEach((line, index) => {
     const cleanLine = line.trim();
     if (!cleanLine.includes('|')) return;
     
-    // Standard markdown table parsing
     const parts = cleanLine.split('|')
       .map(p => p.trim())
-      .filter((p, i, arr) => {
-        // Remove empty strings caused by leading/trailing pipes
-        if (i === 0 && p === '') return false;
-        if (i === arr.length - 1 && p === '') return false;
-        return true;
-      });
+      .filter((p, i, arr) => !(i === 0 && p === '') && !(i === arr.length - 1 && p === ''));
     
-    // We expect at least Business Name, Phone, Rank, Website, Maps Link
-    if (parts.length >= 5) {
+    if (parts.length >= 6) {
       const name = parts[0];
-      
-      // Filter out header text repeating
-      if (
-        name.toLowerCase().includes('business name') || 
-        name.includes('---') || 
-        name === '' ||
-        name.toLowerCase().includes('header')
-      ) return;
+      if (name.toLowerCase().includes('name') || name.includes('---') || name === '') return;
 
       leads.push({
-        id: `prospect-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 7)}`,
+        id: `lead-${Date.now()}-${index}`,
         businessName: name,
         phoneNumber: parts[1] || 'N/A',
-        rank: parseInt(parts[2]?.replace(/[^0-9]/g, '')) || 0,
+        rank: parseInt(parts[2]?.replace(/[^0-9]/g, '')) || (index + 6),
         website: parts[3] || 'None',
         locationLink: parts[4] || '#',
         rating: parseFloat(parts[5]) || 0,
@@ -152,6 +118,5 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
     }
   });
 
-  // Sort by rank ascending (best to worst) as requested
   return leads.sort((a, b) => a.rank - b.rank);
 };
