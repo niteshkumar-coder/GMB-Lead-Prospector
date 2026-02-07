@@ -1,0 +1,7 @@
+{
+  "name": "GMB Lead Prospector",
+  "description": "A professional tool for identifying businesses ranking below the top 5 on Google Maps for specific keywords, providing detailed lead information in a tabular format.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
