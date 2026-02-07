@@ -35,35 +35,33 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     setSearchProgress(0);
-    setSearchStatus('Initializing Maps Connection...');
+    setSearchStatus('Calibrating Radius Scanner...');
 
-    // Progress simulation - slower for 100-200 lead batches
     let currentProgress = 0;
     const updateProgress = () => {
       if (currentProgress < 95) {
-        // Slow down as we get closer to 95 to allow time for the large AI response
-        const increment = currentProgress > 80 ? 0.5 : (Math.random() * 3 + 1);
+        const increment = currentProgress > 80 ? 0.3 : (Math.random() * 2 + 1);
         currentProgress += increment;
         setSearchProgress(Math.floor(currentProgress));
         
-        if (currentProgress < 15) setSearchStatus('Connecting to Google Maps API...');
-        else if (currentProgress < 40) setSearchStatus(`Scanning ${location} for "${keyword}"...`);
-        else if (currentProgress < 75) setSearchStatus('Analyzing all 100 GMB rankings...');
-        else if (currentProgress < 95) setSearchStatus('Formatting large lead database (100+ entries)...');
+        if (currentProgress < 20) setSearchStatus(`Mapping ${radius}km boundary...`);
+        else if (currentProgress < 50) setSearchStatus(`Deep scanning ${location} for "${keyword}"...`);
+        else if (currentProgress < 80) setSearchStatus(`Extracting every business within ${radius}km...`);
+        else if (currentProgress < 95) setSearchStatus('Finalizing lead list & contact details...');
       }
     };
 
-    progressInterval.current = window.setInterval(updateProgress, 600);
+    progressInterval.current = window.setInterval(updateProgress, 700);
 
     try {
       const newLeads = await fetchGmbLeads(keyword, location, radius, userCoords);
       
       if (progressInterval.current) clearInterval(progressInterval.current);
       setSearchProgress(100);
-      setSearchStatus('Data Extraction Complete!');
+      setSearchStatus('Area Scan Complete!');
 
       if (newLeads.length === 0) {
-        setError("No leads found for this search. Try a different city or keyword.");
+        setError(`No leads found within your selected ${radius}km radius. Try a larger area.`);
       } else {
         setLeads(prev => {
           const existingNames = new Set(prev.map(l => l.businessName.toLowerCase()));
@@ -74,7 +72,7 @@ const App: React.FC = () => {
     } catch (err: any) {
       if (progressInterval.current) clearInterval(progressInterval.current);
       console.error("App handleSearch error:", err);
-      setError(err?.message || "An unexpected error occurred. Please try a simpler keyword.");
+      setError(err?.message || "An unexpected error occurred. Please try again.");
     } finally {
       setTimeout(() => {
         setIsLoading(false);
@@ -89,8 +87,8 @@ const App: React.FC = () => {
       
       <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8 text-center sm:text-left">
-          <h2 className="text-3xl font-extrabold text-slate-900 mb-2 tracking-tight">Top 100 GMB Business Finder</h2>
-          <p className="text-slate-600">Extract complete business details for the Top 100 rankings in any area.</p>
+          <h2 className="text-3xl font-extrabold text-slate-900 mb-2 tracking-tight">GMB Full Radius Scanner</h2>
+          <p className="text-slate-600 font-medium">Find <span className="text-indigo-600 font-bold">ALL</span> businesses within your exact selected distance.</p>
         </div>
 
         <SearchForm 
@@ -109,12 +107,9 @@ const App: React.FC = () => {
                 </svg>
               </div>
               <div className="ml-3">
-                <h3 className="text-sm font-bold text-red-800">Extraction Failed</h3>
+                <h3 className="text-sm font-bold text-red-800">Scan Incomplete</h3>
                 <p className="text-sm text-red-700 mt-1">{error}</p>
-                <div className="mt-2 flex gap-4">
-                  <button onClick={() => window.location.reload()} className="text-xs font-bold text-red-800 underline uppercase tracking-tighter">Reload Page</button>
-                  <p className="text-[10px] text-red-600 font-medium">Tip: Try searching for specific cities rather than large states.</p>
-                </div>
+                <button onClick={() => window.location.reload()} className="mt-2 text-xs font-bold text-red-800 underline uppercase">Retry Scan</button>
               </div>
             </div>
           </div>
@@ -127,8 +122,7 @@ const App: React.FC = () => {
 
       <footer className="bg-white border-t border-slate-200 py-8 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-slate-400 text-sm">
-          <p>&copy; {new Date().getFullYear()} GMB Data Prospector Pro. All rights reserved.</p>
-          <p className="mt-1 font-medium italic">High-Accuracy Google Maps Data Mining.</p>
+          <p>&copy; {new Date().getFullYear()} GMB Deep Radius Prospector. All rights reserved.</p>
         </div>
       </footer>
     </div>
