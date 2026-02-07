@@ -125,15 +125,31 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
 
       autoTable(doc, {
         startY: 35,
-        head: [['Business', 'Phone', 'Rank', 'Website', 'Rating', 'Distance', 'Keyword']],
+        head: [['Business', 'Phone', 'Rank', 'Rating', 'Distance', 'Website', 'Google Maps Link']],
         body: sortedLeads.map(l => [
-          l.businessName, l.phoneNumber, `${l.rank}th`, 
-          l.website === 'None' ? 'N/A' : l.website, 
-          String(l.rating), l.distance, l.keyword
+          l.businessName, 
+          l.phoneNumber, 
+          `${l.rank}th`, 
+          String(l.rating), 
+          l.distance, 
+          l.website === 'None' ? 'N/A' : l.website,
+          'View on Maps'
         ]),
         theme: 'striped',
         headStyles: { fillColor: [79, 70, 229] },
         styles: { fontSize: 8 },
+        columnStyles: {
+          6: { textColor: [79, 70, 229], fontStyle: 'bold' } // Style the Maps Link column
+        },
+        didDrawCell: (data: any) => {
+          // Add interactive link to the 'Google Maps Link' column (index 6)
+          if (data.section === 'body' && data.column.index === 6) {
+            const lead = sortedLeads[data.row.index];
+            if (lead.locationLink && lead.locationLink !== '#') {
+              doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: lead.locationLink });
+            }
+          }
+        }
       });
 
       doc.save(`gmb_rankings_${Date.now()}.pdf`);
