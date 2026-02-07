@@ -19,18 +19,19 @@ export const fetchGmbLeads = async (
   // Using gemini-2.5-flash for reliable Maps Grounding
   const model = "gemini-2.5-flash"; 
   
+  // Define a clear origin point for the AI
   const referencePoint = userCoords 
-    ? `the user's current GPS coordinates (${userCoords.latitude}, ${userCoords.longitude})`
+    ? `User's Current GPS Location (Lat: ${userCoords.latitude}, Lng: ${userCoords.longitude})`
     : `the geographic center of ${location}`;
 
   const prompt = `You are a specialized GMB Deep-Scan Extraction Bot.
   
-  TASK: Perform an EXHAUSTIVE scan for "${keyword}" within a STRICT ${radius}km radius of ${referencePoint}.
+  TASK: Perform an EXHAUSTIVE scan for "${keyword}" within a STRICT ${radius}km radius of the following starting point: ${referencePoint}.
   
   CRITICAL INSTRUCTIONS:
-  1. RADIUS ENFORCEMENT: Find EVERY business that falls within the ${radius}km circle. Do not stop at the first few results. 
-  2. SCOPE: Provide a comprehensive list starting from Rank 1 up to Rank 100 or as many as physically exist within the ${radius}km zone.
-  3. DATA QUALITY: Only include businesses that are actually within the ${radius}km distance.
+  1. DISTANCE CALCULATION: For every business found, you MUST calculate the distance starting EXACTLY from the coordinates provided: ${userCoords ? `Latitude ${userCoords.latitude}, Longitude ${userCoords.longitude}` : location}. 
+  2. RADIUS ENFORCEMENT: Find EVERY business that falls within the ${radius}km circle.
+  3. DATA QUALITY: Only include businesses that are actually within the ${radius}km distance from the starting point.
   4. FORMAT: Return the data ONLY as a Markdown table.
   5. NO CONVERSATION: Start with the table header immediately. No code blocks. No "Sure".
 
@@ -38,7 +39,7 @@ export const fetchGmbLeads = async (
   | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |
   | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 
-  GOAL: Find the maximum number of leads (100-200) specifically within the ${radius}km range.`;
+  The "Distance" column MUST show how far the business is from ${userCoords ? 'the user\'s GPS location' : 'the city center'}.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -66,13 +67,13 @@ export const fetchGmbLeads = async (
       if (text.toLowerCase().includes("limit") || text.toLowerCase().includes("quota")) {
         throw new Error("API Limit reached. Please wait a moment.");
       }
-      throw new Error(`No leads found for "${keyword}" within ${radius}km of ${location}. Try increasing the radius.`);
+      throw new Error(`No leads found for "${keyword}" within ${radius}km. Try increasing the radius or check if GPS is blocked.`);
     }
 
     return leads;
   } catch (error: any) {
     console.error("Prospecting Error:", error);
-    throw new Error(error?.message || "An error occurred while scanning the radius.");
+    throw new Error(error?.message || "An error occurred while scanning the area.");
   }
 };
 
