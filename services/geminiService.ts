@@ -19,7 +19,6 @@ export const fetchGmbLeads = async (
   // Using gemini-2.5-flash for reliable Maps Grounding
   const model = "gemini-2.5-flash"; 
   
-  // Define the reference point for the prompt
   const referencePoint = userCoords 
     ? `the user's current GPS coordinates (${userCoords.latitude}, ${userCoords.longitude})`
     : `the geographic center of ${location}`;
@@ -27,24 +26,26 @@ export const fetchGmbLeads = async (
   const prompt = `You are an expert GMB Lead Generator. 
   TASK: Find exactly 100 to 200 businesses for the keyword "${keyword}" in or around "${location}" within a ${radius}km radius.
   
-  CRITICAL INSTRUCTIONS:
-  1. TARGET LEADS: Only include businesses ranking 6th or lower (not in the top 5).
-  2. DISTANCE: Calculate the distance for every business relative to ${referencePoint}. This is the most important field.
-  3. DATA COLLECTION: 
-     - Business Name
-     - Phone Number
-     - GMB Rank (Estimate position like 7th, 15th, 88th)
-     - Website URL (Write "None" if not available)
-     - Google Maps Link
-     - Rating (Star rating)
-     - Distance (e.g., "1.2 km", "5.4 km")
+  CRITICAL INSTRUCTIONS FOR DISTANCE:
+  1. Calculate the exact distance for every business relative to ${referencePoint}.
+  2. STRICT UNIT FORMAT: If distance is < 1000m, use "meters" abbreviated as "m" (e.g., "350 m"). If distance is >= 1km, use "kilometers" abbreviated as "km" (e.g., "1.2 km").
+  3. DATA SOURCE: Only include businesses ranking 6th or lower in GMB results (skip the top 5).
+
+  REQUIRED DATA FIELDS FOR EACH BUSINESS:
+  - Business Name
+  - Phone Number
+  - GMB Rank (Position number like 7th, 15th, 100th)
+  - Website URL (Write "None" if not available)
+  - Google Maps Link (Direct link to the place)
+  - Rating (Numerical star rating)
+  - Distance (Format: "X m" or "X.X km")
 
   OUTPUT FORMAT:
-  Return ONLY a Markdown table. Do not include any introductory text.
-  Headers: | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |
+  Return ONLY a Markdown table with the following headers. No preamble or chat.
+  | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |
   | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 
-  Maximize the output to reach as close to 200 leads as possible. If the area is small, find all available businesses beyond the top 5.`;
+  Try to find at least 100-200 leads. If the area is small, find as many as possible ranking below the top 5.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -60,20 +61,20 @@ export const fetchGmbLeads = async (
             } : undefined
           }
         },
-        maxOutputTokens: 20000, // High token count for 100-200 leads
-        temperature: 0.2 // Lower temperature for more consistent table formatting
+        maxOutputTokens: 20000,
+        temperature: 0.1
       },
     });
 
     const text = response.text || "";
     if (!text || text.length < 100) {
-      throw new Error("The search returned insufficient data. Please try a broader keyword or a larger radius.");
+      throw new Error("Insufficient data received. Try searching with a larger radius.");
     }
 
     const leads = parseLeadsFromMarkdown(text, keyword);
     
     if (leads.length === 0) {
-      throw new Error("Found results but could not format them into a table. Please try searching again.");
+      throw new Error("Could not parse lead data from response. Please try again.");
     }
 
     return leads;
@@ -100,7 +101,8 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
       .map(p => p.trim())
       .filter((p, i, arr) => !(i === 0 && p === '') && !(i === arr.length - 1 && p === ''));
     
-    if (parts.length >= 6) {
+    // Check for at least name and distance parts
+    if (parts.length >= 7) {
       const name = parts[0];
       if (name.toLowerCase().includes('name') || name.includes('---') || name === '') return;
 
@@ -112,7 +114,7 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
         website: parts[3] || 'None',
         locationLink: parts[4] || '#',
         rating: parseFloat(parts[5]) || 0,
-        distance: parts[6] || 'N/A',
+        distance: parts[6] || '0 km',
         keyword: keyword
       });
     }
