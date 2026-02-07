@@ -1,8 +1,6 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { Lead } from '../types';
-import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
 
 interface LeadTableProps {
   leads: Lead[];
@@ -59,6 +57,7 @@ const LinkHealthIndicator: React.FC<{ url: string }> = ({ url }) => {
 const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'rank', direction: 'ascending' });
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   const sortedLeads = useMemo(() => {
     const sortableLeads = [...leads];
@@ -112,65 +111,72 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
     setIsExportOpen(false);
   };
 
-  const exportToPdf = () => {
-    const doc = new jsPDF({ orientation: 'landscape' });
-    
-    doc.setFontSize(18);
-    doc.text('GMB Lead Prospector Report', 14, 20);
-    doc.setFontSize(11);
-    doc.setTextColor(100);
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
-    doc.text(`Total Leads: ${leads.length}`, 14, 37);
-    doc.setFontSize(9);
-    doc.text('Tip: Business names and websites are clickable links.', 14, 43);
+  const exportToPdf = async () => {
+    setIsGeneratingPdf(true);
+    try {
+      // Dynamic imports to keep initial bundle small
+      const { jsPDF } = await import('jspdf');
+      await import('jspdf-autotable');
+      
+      const doc = new jsPDF({ orientation: 'landscape' });
+      
+      doc.setFontSize(18);
+      doc.text('GMB Lead Prospector Report', 14, 20);
+      doc.setFontSize(11);
+      doc.setTextColor(100);
+      doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
+      doc.text(`Total Leads: ${leads.length}`, 14, 37);
+      doc.setFontSize(9);
+      doc.text('Tip: Business names and websites are clickable links.', 14, 43);
 
-    const tableHeaders = [['Business Name', 'Phone', 'Rank', 'Website', 'Rating', 'Distance', 'Keyword']];
-    const tableData = sortedLeads.map(l => [
-      l.businessName,
-      l.phoneNumber,
-      `${l.rank}th`,
-      l.website === 'None' ? 'NA' : l.website,
-      l.rating,
-      l.distance,
-      l.keyword
-    ]);
+      const tableHeaders = [['Business Name', 'Phone', 'Rank', 'Website', 'Rating', 'Distance', 'Keyword']];
+      const tableData = sortedLeads.map(l => [
+        l.businessName,
+        l.phoneNumber,
+        `${l.rank}th`,
+        l.website === 'None' ? 'NA' : l.website,
+        l.rating,
+        l.distance,
+        l.keyword
+      ]);
 
-    (doc as any).autoTable({
-      startY: 48,
-      head: tableHeaders,
-      body: tableData,
-      theme: 'striped',
-      headStyles: { fillColor: [79, 70, 229] },
-      styles: { fontSize: 8, cellPadding: 3 },
-      columnStyles: {
-        0: { textColor: [79, 70, 229], fontStyle: 'bold' }, // Business Name
-        3: { textColor: [79, 70, 229] }, // Website
-      },
-      didDrawCell: (data: any) => {
-        // Only handle body cells (skip headers)
-        if (data.section === 'body') {
-          const lead = sortedLeads[data.row.index];
-          
-          // Index 0: Business Name -> Maps Link
-          if (data.column.index === 0) {
-            doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { 
-              url: lead.locationLink 
-            });
-          }
-          
-          // Index 3: Website -> External Site
-          if (data.column.index === 3 && lead.website !== 'None') {
-            const url = lead.website.startsWith('http') ? lead.website : `https://${lead.website}`;
-            doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { 
-              url: url 
-            });
+      (doc as any).autoTable({
+        startY: 48,
+        head: tableHeaders,
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillColor: [79, 70, 229] },
+        styles: { fontSize: 8, cellPadding: 3 },
+        columnStyles: {
+          0: { textColor: [79, 70, 229], fontStyle: 'bold' }, // Business Name
+          3: { textColor: [79, 70, 229] }, // Website
+        },
+        didDrawCell: (data: any) => {
+          if (data.section === 'body') {
+            const lead = sortedLeads[data.row.index];
+            if (data.column.index === 0) {
+              doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { 
+                url: lead.locationLink 
+              });
+            }
+            if (data.column.index === 3 && lead.website !== 'None') {
+              const url = lead.website.startsWith('http') ? lead.website : `https://${lead.website}`;
+              doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { 
+                url: url 
+              });
+            }
           }
         }
-      }
-    });
+      });
 
-    doc.save(`gmb_leads_${Date.now()}.pdf`);
-    setIsExportOpen(false);
+      doc.save(`gmb_leads_${Date.now()}.pdf`);
+    } catch (error) {
+      console.error("PDF generation failed:", error);
+      alert("Failed to generate PDF. Please try CSV export.");
+    } finally {
+      setIsGeneratingPdf(false);
+      setIsExportOpen(false);
+    }
   };
 
   if (leads.length === 0) {
@@ -202,12 +208,13 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
         <div className="relative">
           <button 
             onClick={() => setIsExportOpen(!isExportOpen)}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-sm"
+            disabled={isGeneratingPdf}
+            className={`px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-sm ${isGeneratingPdf ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
-            Export Leads
+            {isGeneratingPdf ? 'Preparing...' : 'Export Leads'}
             <svg className={`w-3 h-3 transition-transform ${isExportOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
@@ -231,15 +238,23 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
               </button>
               <button 
                 onClick={exportToPdf}
-                className="w-full px-4 py-3 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+                disabled={isGeneratingPdf}
+                className="w-full px-4 py-3 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors disabled:opacity-50"
               >
                 <div className="w-8 h-8 rounded bg-rose-100 text-rose-600 flex items-center justify-center">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                  </svg>
+                  {isGeneratingPdf ? (
+                    <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                  )}
                 </div>
                 <div>
-                  <p className="font-semibold">Export as PDF</p>
+                  <p className="font-semibold">{isGeneratingPdf ? 'Generating...' : 'Export as PDF'}</p>
                   <p className="text-[10px] text-slate-400">Interactive Report</p>
                 </div>
               </button>
