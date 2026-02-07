@@ -24,22 +24,21 @@ export const fetchGmbLeads = async (
     ? `User's Current GPS Location (Lat: ${userCoords.latitude}, Lng: ${userCoords.longitude})`
     : `the geographic center of ${location}`;
 
-  const prompt = `You are a specialized GMB Deep-Scan Extraction Bot.
+  const prompt = `You are a high-performance GMB Deep-Scanner. 
   
-  TASK: Perform an EXHAUSTIVE scan for "${keyword}" within a STRICT ${radius}km radius of the following starting point: ${referencePoint}.
-  
-  CRITICAL INSTRUCTIONS:
-  1. DISTANCE CALCULATION: For every business found, you MUST calculate the distance starting EXACTLY from the coordinates provided: ${userCoords ? `Latitude ${userCoords.latitude}, Longitude ${userCoords.longitude}` : location}. 
-  2. RADIUS ENFORCEMENT: Find EVERY business that falls within the ${radius}km circle.
-  3. DATA QUALITY: Only include businesses that are actually within the ${radius}km distance from the starting point.
-  4. FORMAT: Return the data ONLY as a Markdown table.
-  5. NO CONVERSATION: Start with the table header immediately. No code blocks. No "Sure".
+  TARGET: Find approximately 100 business leads for "${keyword}" within a ${radius}km radius.
+  ORIGIN POINT: ${referencePoint}.
 
-  COLUMNS:
+  CRITICAL RULES:
+  1. QUANTITY: Aim for a list of 100 leads. If there are fewer than 100 businesses in the area, list ALL of them.
+  2. RANKING: Rank them from 1 to 100 based on their Google Maps prominence.
+  3. DISTANCE: Calculate the distance for EACH business starting EXACTLY from the GPS coordinates: ${userCoords ? `Lat ${userCoords.latitude}, Lng ${userCoords.longitude}` : location}.
+  4. RADIUS: Every result MUST be within ${radius}km of the origin.
+  5. FORMAT: Output ONLY a Markdown table. No text before or after.
+  6. TABLE COLUMNS: | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |
+
   | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |
-  | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-
-  The "Distance" column MUST show how far the business is from ${userCoords ? 'the user\'s GPS location' : 'the city center'}.`;
+  | :--- | :--- | :--- | :--- | :--- | :--- | :--- |`;
 
   try {
     const response = await ai.models.generateContent({
@@ -55,7 +54,7 @@ export const fetchGmbLeads = async (
             } : undefined
           }
         },
-        maxOutputTokens: 30000,
+        maxOutputTokens: 30000, // Sufficient for ~100 leads
         temperature: 0.1
       },
     });
@@ -67,7 +66,7 @@ export const fetchGmbLeads = async (
       if (text.toLowerCase().includes("limit") || text.toLowerCase().includes("quota")) {
         throw new Error("API Limit reached. Please wait a moment.");
       }
-      throw new Error(`No leads found for "${keyword}" within ${radius}km. Try increasing the radius or check if GPS is blocked.`);
+      throw new Error(`No businesses found for "${keyword}" within ${radius}km. Try a broader search.`);
     }
 
     return leads;
@@ -113,5 +112,6 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
     }
   });
 
+  // Sort by rank ascending
   return leads.sort((a, b) => a.rank - b.rank);
 };

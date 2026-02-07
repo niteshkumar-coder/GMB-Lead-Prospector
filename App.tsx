@@ -48,7 +48,7 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     setSearchProgress(0);
-    setSearchStatus('Syncing GPS Coordinates...');
+    setSearchStatus('Establishing Precise GPS Link...');
 
     // Attempt to refresh location right before search for maximum accuracy
     if (geoStatus !== 'active') {
@@ -57,15 +57,17 @@ const App: React.FC = () => {
 
     let currentProgress = 0;
     const updateProgress = () => {
-      if (currentProgress < 95) {
-        const increment = currentProgress > 80 ? 0.2 : (Math.random() * 2 + 1);
+      if (currentProgress < 98) {
+        // Slower progress for 100 leads as it takes more time to generate
+        const increment = currentProgress > 90 ? 0.1 : currentProgress > 70 ? 0.3 : (Math.random() * 1.5 + 0.5);
         currentProgress += increment;
         setSearchProgress(Math.floor(currentProgress));
         
         if (currentProgress < 15) setSearchStatus('Locking GPS Satellite Signal...');
-        else if (currentProgress < 40) setSearchStatus(`Mapping ${radius}km Radius...`);
-        else if (currentProgress < 70) setSearchStatus(`Calculating Precise Distances from Your Location...`);
-        else if (currentProgress < 95) setSearchStatus('Generating Exhaustive Lead List...');
+        else if (currentProgress < 35) setSearchStatus(`Mapping ${radius}km Radius for "${keyword}"...`);
+        else if (currentProgress < 60) setSearchStatus(`Finding Rank 1 to 50...`);
+        else if (currentProgress < 85) setSearchStatus(`Finding Rank 51 to 100...`);
+        else if (currentProgress < 98) setSearchStatus('Compiling exhaustive 100+ lead database...');
       }
     };
 
@@ -76,21 +78,17 @@ const App: React.FC = () => {
       
       if (progressInterval.current) clearInterval(progressInterval.current);
       setSearchProgress(100);
-      setSearchStatus('Precision Scan Complete!');
+      setSearchStatus('Deep Scan Complete!');
 
       if (newLeads.length === 0) {
-        setError(`No leads found within ${radius}km of your location. Try a different keyword or larger radius.`);
+        setError(`No leads found within ${radius}km. Please try a broader keyword.`);
       } else {
-        setLeads(prev => {
-          const existingNames = new Set(prev.map(l => l.businessName.toLowerCase()));
-          const uniqueNewLeads = newLeads.filter(l => !existingNames.has(l.businessName.toLowerCase()));
-          return [...prev, ...uniqueNewLeads];
-        });
+        setLeads(newLeads); // Replace instead of append to show the specific scan's 100 leads
       }
     } catch (err: any) {
       if (progressInterval.current) clearInterval(progressInterval.current);
       console.error("App handleSearch error:", err);
-      setError(err?.message || "Search failed. Please ensure location access is allowed in your browser.");
+      setError(err?.message || "Search failed. Check your internet connection and location permissions.");
     } finally {
       setTimeout(() => {
         setIsLoading(false);
@@ -106,12 +104,14 @@ const App: React.FC = () => {
       <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8 flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="text-center sm:text-left">
-            <h2 className="text-3xl font-extrabold text-slate-900 mb-2 tracking-tight">GMB Precision Radius Scanner</h2>
-            <p className="text-slate-600 font-medium">Distances are calculated <span className="text-indigo-600 font-bold">EXACTLY</span> from where you search.</p>
+            <h2 className="text-3xl font-extrabold text-slate-900 mb-2 tracking-tight">GMB Top 100 Radius Scanner</h2>
+            <p className="text-slate-600 font-medium tracking-tight">
+              Scanning exactly <span className="text-indigo-600 font-bold">{leads.length > 0 ? leads.length : 'up to 100'}</span> leads relative to your GPS.
+            </p>
           </div>
           
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border ${geoStatus === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : geoStatus === 'denied' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-            <span className={`h-2 w-2 rounded-full ${geoStatus === 'active' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></span>
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border ${geoStatus === 'active' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : geoStatus === 'denied' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+            <span className={`h-2 w-2 rounded-full ${geoStatus === 'active' ? 'bg-indigo-500 animate-pulse' : 'bg-slate-300'}`}></span>
             {geoStatus === 'active' ? 'GPS: Highly Accurate' : geoStatus === 'denied' ? 'GPS: Access Denied' : 'GPS: Detecting...'}
             {geoStatus === 'denied' && (
               <button onClick={requestLocation} className="ml-2 underline hover:text-red-900">Enable</button>
@@ -136,11 +136,11 @@ const App: React.FC = () => {
                 </svg>
               </div>
               <div className="ml-3">
-                <h3 className="text-sm font-bold text-red-800">Scan Interrupted</h3>
+                <h3 className="text-sm font-bold text-red-800">Deep Scan Interrupted</h3>
                 <p className="text-sm text-red-700 mt-1">{error}</p>
                 <div className="mt-2 flex gap-3">
                   <button onClick={() => window.location.reload()} className="text-xs font-bold text-red-800 underline uppercase">Refresh App</button>
-                  {geoStatus === 'denied' && <p className="text-[10px] text-red-600 italic">Please allow location permissions in your browser bar.</p>}
+                  {geoStatus === 'denied' && <p className="text-[10px] text-red-600 italic">Please enable location for distance accuracy.</p>}
                 </div>
               </div>
             </div>
@@ -153,8 +153,8 @@ const App: React.FC = () => {
       </main>
 
       <footer className="bg-white border-t border-slate-200 py-8 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-slate-400 text-sm">
-          <p>&copy; {new Date().getFullYear()} GMB Precision Radius Prospector. All rights reserved.</p>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-slate-400 text-sm font-medium">
+          <p>&copy; {new Date().getFullYear()} GMB Precision Rank Scanner. All distances relative to search origin.</p>
         </div>
       </footer>
     </div>
