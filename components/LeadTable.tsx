@@ -114,9 +114,11 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
   const exportToPdf = async () => {
     setIsGeneratingPdf(true);
     try {
-      // Dynamic imports to keep initial bundle small
       const { jsPDF } = await import('jspdf');
-      await import('jspdf-autotable');
+      const autoTableModule = await import('jspdf-autotable');
+      
+      // The autoTable plugin might be the default export or need to be called on the module
+      const autoTable = (autoTableModule as any).default || autoTableModule;
       
       const doc = new jsPDF({ orientation: 'landscape' });
       
@@ -127,20 +129,21 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
       doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
       doc.text(`Total Leads: ${leads.length}`, 14, 37);
       doc.setFontSize(9);
-      doc.text('Tip: Business names and websites are clickable links.', 14, 43);
+      doc.text('Tip: Business names and websites are clickable links in this PDF.', 14, 43);
 
       const tableHeaders = [['Business Name', 'Phone', 'Rank', 'Website', 'Rating', 'Distance', 'Keyword']];
       const tableData = sortedLeads.map(l => [
-        l.businessName,
-        l.phoneNumber,
+        String(l.businessName),
+        String(l.phoneNumber),
         `${l.rank}th`,
-        l.website === 'None' ? 'NA' : l.website,
-        l.rating,
-        l.distance,
-        l.keyword
+        l.website === 'None' ? 'NA' : String(l.website),
+        String(l.rating),
+        String(l.distance),
+        String(l.keyword)
       ]);
 
-      (doc as any).autoTable({
+      // Use the standalone autoTable function which is safer in ESM
+      autoTable(doc, {
         startY: 48,
         head: tableHeaders,
         body: tableData,
@@ -148,8 +151,8 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
         headStyles: { fillColor: [79, 70, 229] },
         styles: { fontSize: 8, cellPadding: 3 },
         columnStyles: {
-          0: { textColor: [79, 70, 229], fontStyle: 'bold' }, // Business Name
-          3: { textColor: [79, 70, 229] }, // Website
+          0: { textColor: [79, 70, 229], fontStyle: 'bold' },
+          3: { textColor: [79, 70, 229] },
         },
         didDrawCell: (data: any) => {
           if (data.section === 'body') {
@@ -169,10 +172,10 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
         }
       });
 
-      doc.save(`gmb_leads_${Date.now()}.pdf`);
+      doc.save(`gmb_prospect_report_${Date.now()}.pdf`);
     } catch (error) {
-      console.error("PDF generation failed:", error);
-      alert("Failed to generate PDF. Please try CSV export.");
+      console.error("PDF generation failed internal error:", error);
+      alert("Failed to generate PDF. This often happens if the export libraries are still loading. Please try CSV export or wait a few seconds and try PDF again.");
     } finally {
       setIsGeneratingPdf(false);
       setIsExportOpen(false);
@@ -203,7 +206,7 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
       <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
-        <h3 className="font-bold text-slate-800">Results Table</h3>
+        <h3 className="font-bold text-slate-800">Prospecting Results</h3>
         
         <div className="relative">
           <button 
@@ -214,7 +217,7 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
-            {isGeneratingPdf ? 'Preparing...' : 'Export Leads'}
+            {isGeneratingPdf ? 'Generating PDF...' : 'Export Leads'}
             <svg className={`w-3 h-3 transition-transform ${isExportOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
@@ -254,8 +257,8 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
                   )}
                 </div>
                 <div>
-                  <p className="font-semibold">{isGeneratingPdf ? 'Generating...' : 'Export as PDF'}</p>
-                  <p className="text-[10px] text-slate-400">Interactive Report</p>
+                  <p className="font-semibold">{isGeneratingPdf ? 'Creating PDF...' : 'Export as PDF'}</p>
+                  <p className="text-[10px] text-slate-400">Professional Report</p>
                 </div>
               </button>
             </div>
