@@ -37,32 +37,33 @@ const App: React.FC = () => {
     setSearchProgress(0);
     setSearchStatus('Initializing Maps Connection...');
 
-    // Progress simulation
+    // Progress simulation - slower for 100-200 lead batches
     let currentProgress = 0;
     const updateProgress = () => {
-      if (currentProgress < 90) {
-        currentProgress += Math.random() * 5;
+      if (currentProgress < 95) {
+        // Slow down as we get closer to 95 to allow time for the large AI response
+        const increment = currentProgress > 80 ? 0.5 : (Math.random() * 3 + 1);
+        currentProgress += increment;
         setSearchProgress(Math.floor(currentProgress));
         
-        if (currentProgress < 20) setSearchStatus('Connecting to Google Maps API...');
-        else if (currentProgress < 45) setSearchStatus(`Scanning ${location} for "${keyword}"...`);
-        else if (currentProgress < 70) setSearchStatus('Analyzing rankings (Pos #1 to #100)...');
-        else if (currentProgress < 90) setSearchStatus('Compiling business profiles & distances...');
+        if (currentProgress < 15) setSearchStatus('Connecting to Google Maps API...');
+        else if (currentProgress < 40) setSearchStatus(`Scanning ${location} for "${keyword}"...`);
+        else if (currentProgress < 75) setSearchStatus('Analyzing all 100 GMB rankings...');
+        else if (currentProgress < 95) setSearchStatus('Formatting large lead database (100+ entries)...');
       }
     };
 
-    progressInterval.current = window.setInterval(updateProgress, 800);
+    progressInterval.current = window.setInterval(updateProgress, 600);
 
     try {
       const newLeads = await fetchGmbLeads(keyword, location, radius, userCoords);
       
-      // Stop interval and complete progress
       if (progressInterval.current) clearInterval(progressInterval.current);
       setSearchProgress(100);
       setSearchStatus('Data Extraction Complete!');
 
       if (newLeads.length === 0) {
-        setError("No leads found in this area. Try a broader radius or a different keyword.");
+        setError("No leads found for this search. Try a different city or keyword.");
       } else {
         setLeads(prev => {
           const existingNames = new Set(prev.map(l => l.businessName.toLowerCase()));
@@ -73,8 +74,7 @@ const App: React.FC = () => {
     } catch (err: any) {
       if (progressInterval.current) clearInterval(progressInterval.current);
       console.error("App handleSearch error:", err);
-      const errorMessage = err?.message || "An unexpected error occurred while fetching leads.";
-      setError(`Search Failed: ${errorMessage}`);
+      setError(err?.message || "An unexpected error occurred. Please try a simpler keyword.");
     } finally {
       setTimeout(() => {
         setIsLoading(false);
@@ -109,9 +109,12 @@ const App: React.FC = () => {
                 </svg>
               </div>
               <div className="ml-3">
-                <h3 className="text-sm font-bold text-red-800">Error Encountered</h3>
+                <h3 className="text-sm font-bold text-red-800">Extraction Failed</h3>
                 <p className="text-sm text-red-700 mt-1">{error}</p>
-                <p className="text-xs text-red-600 mt-2 font-medium">Please check your internet or search parameters.</p>
+                <div className="mt-2 flex gap-4">
+                  <button onClick={() => window.location.reload()} className="text-xs font-bold text-red-800 underline uppercase tracking-tighter">Reload Page</button>
+                  <p className="text-[10px] text-red-600 font-medium">Tip: Try searching for specific cities rather than large states.</p>
+                </div>
               </div>
             </div>
           </div>
@@ -125,7 +128,7 @@ const App: React.FC = () => {
       <footer className="bg-white border-t border-slate-200 py-8 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-slate-400 text-sm">
           <p>&copy; {new Date().getFullYear()} GMB Data Prospector Pro. All rights reserved.</p>
-          <p className="mt-1 font-medium">Professional Google Maps Analysis Tool.</p>
+          <p className="mt-1 font-medium italic">High-Accuracy Google Maps Data Mining.</p>
         </div>
       </footer>
     </div>
