@@ -2,8 +2,13 @@
 import { GoogleGenAI } from "@google/genai";
 import { Lead } from "../types";
 
-// Initialize with direct process.env.API_KEY as per guidelines.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Lazy initialize to avoid top-level ReferenceErrors for 'process'
+const getAIClient = () => {
+  if (!process.env.API_KEY) {
+    console.warn("API_KEY is not defined in process.env");
+  }
+  return new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+};
 
 export const fetchGmbLeads = async (
   keyword: string, 
@@ -11,7 +16,7 @@ export const fetchGmbLeads = async (
   radius: number,
   userCoords?: { latitude: number, longitude: number }
 ): Promise<Lead[]> => {
-  // Maps grounding is only supported in Gemini 2.5 series models.
+  const ai = getAIClient();
   const model = "gemini-2.5-flash"; 
   
   const prompt = `You are a professional GMB Lead Prospector. 
@@ -38,11 +43,8 @@ export const fetchGmbLeads = async (
       model: model,
       contents: prompt,
       config: {
-        // googleMaps can be used with googleSearch per rules.
         tools: [{ googleMaps: {} }, { googleSearch: {} }],
-        // max thinking budget for 2.5 Flash is 24576. 8000 is safe.
         thinkingConfig: { thinkingBudget: 8000 },
-        // maxOutputTokens must be set alongside thinkingBudget to reserve space for final response.
         maxOutputTokens: 12000, 
         toolConfig: {
           retrievalConfig: {
@@ -55,14 +57,9 @@ export const fetchGmbLeads = async (
       },
     });
 
-    // Use .text property directly (not a method) as per SDK rules.
     const text = response.text || "";
-    console.debug("Gemini response length:", text.length);
-    
-    // Attempt standard parse
     let leads = parseLeadsFromMarkdown(text, keyword);
     
-    // Fallback for cases where the table might be malformed or split
     if (leads.length === 0 && text.includes('|')) {
        leads = fallbackParse(text, keyword);
     }
@@ -78,7 +75,6 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
   const lines = md.split('\n');
   const leads: Lead[] = [];
   
-  // Find where the table data actually begins
   const separatorIndex = lines.findIndex(l => l.includes('|') && l.includes('---'));
   if (separatorIndex === -1) return [];
 
@@ -88,16 +84,13 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
     const cleanLine = line.trim();
     if (!cleanLine.includes('|')) return;
     
-    // Split and clean parts
     const parts = cleanLine.split('|').map(p => p.trim());
     
-    // Remove leading/trailing empty elements from split
     if (parts[0] === '') parts.shift();
     if (parts[parts.length - 1] === '') parts.pop();
 
     if (parts.length >= 5) {
       const name = parts[0];
-      // Skip headers or separators if they somehow got into dataLines
       if (name.toLowerCase().includes('name') || name.includes('---') || name === '') return;
 
       leads.push({
@@ -119,12 +112,10 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
 
 const fallbackParse = (text: string, keyword: string): Lead[] => {
     const leads: Lead[] = [];
-    // More aggressive line-by-line check for table rows
     const lines = text.split('\n');
     lines.forEach((line, index) => {
         if (line.includes('|') && line.split('|').length >= 6) {
             const parts = line.split('|').map(p => p.trim()).filter(p => p !== '');
-            // Simple check to avoid headers
             if (parts[0].toLowerCase().includes('name') || parts[0].includes('---')) return;
             
             leads.push({
