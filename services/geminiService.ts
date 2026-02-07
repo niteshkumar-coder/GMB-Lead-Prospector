@@ -2,7 +2,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { Lead } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+// Initialize with direct process.env.API_KEY as per guidelines.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const fetchGmbLeads = async (
   keyword: string, 
@@ -10,7 +11,7 @@ export const fetchGmbLeads = async (
   radius: number,
   userCoords?: { latitude: number, longitude: number }
 ): Promise<Lead[]> => {
-  // Maps grounding is supported in Gemini 2.5 series models.
+  // Maps grounding is only supported in Gemini 2.5 series models.
   const model = "gemini-2.5-flash"; 
   
   const prompt = `You are a professional GMB Lead Prospector. 
@@ -39,8 +40,10 @@ export const fetchGmbLeads = async (
       config: {
         // googleMaps can be used with googleSearch per rules.
         tools: [{ googleMaps: {} }, { googleSearch: {} }],
+        // max thinking budget for 2.5 Flash is 24576. 8000 is safe.
         thinkingConfig: { thinkingBudget: 8000 },
-        maxOutputTokens: 12000, // Increased to handle large tables
+        // maxOutputTokens must be set alongside thinkingBudget to reserve space for final response.
+        maxOutputTokens: 12000, 
         toolConfig: {
           retrievalConfig: {
             latLng: userCoords ? {
@@ -52,6 +55,7 @@ export const fetchGmbLeads = async (
       },
     });
 
+    // Use .text property directly (not a method) as per SDK rules.
     const text = response.text || "";
     console.debug("Gemini response length:", text.length);
     
