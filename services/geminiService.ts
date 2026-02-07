@@ -2,12 +2,14 @@
 import { GoogleGenAI } from "@google/genai";
 import { Lead } from "../types";
 
-// Lazy initialize to avoid top-level ReferenceErrors for 'process'
+// Never access process.env at the top level. 
+// This function is only called when the user clicks 'Search'.
 const getAIClient = () => {
-  if (!process.env.API_KEY) {
-    console.warn("API_KEY is not defined in process.env");
+  const apiKey = (window as any).process?.env?.API_KEY || (process as any)?.env?.API_KEY || '';
+  if (!apiKey) {
+    console.error("API_KEY is missing from environment");
   }
-  return new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  return new GoogleGenAI({ apiKey });
 };
 
 export const fetchGmbLeads = async (
