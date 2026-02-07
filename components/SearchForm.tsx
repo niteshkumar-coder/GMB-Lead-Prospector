@@ -5,9 +5,11 @@ import { INDIAN_LOCATIONS } from '../data/cities';
 interface SearchFormProps {
   onSearch: (keyword: string, location: string, radius: number) => void;
   isLoading: boolean;
+  progress: number;
+  status: string;
 }
 
-const SearchForm: React.FC<SearchFormProps> = ({ onSearch, isLoading }) => {
+const SearchForm: React.FC<SearchFormProps> = ({ onSearch, isLoading, progress, status }) => {
   const [keyword, setKeyword] = useState('');
   const [location, setLocation] = useState('');
   const [radius, setRadius] = useState(10);
@@ -35,7 +37,7 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, isLoading }) => {
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
           </span>
-          GPS Active - Distances from you
+          GPS Active
         </div>
       )}
       
@@ -99,19 +101,53 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, isLoading }) => {
             >
               {isLoading ? (
                 <>
-                  <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                   </svg>
-                  Mapping Leads...
+                  Searching...
                 </>
               ) : (
-                'Generate 100-200 Leads'
+                'Generate 200 Leads'
               )}
             </button>
           </div>
         </div>
+
+        {isLoading && (
+          <div className="mt-2 space-y-3 animate-in fade-in slide-in-from-top-2 duration-500">
+            <div className="flex justify-between items-end">
+              <div className="flex flex-col">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Live Scan Process</span>
+                <span className="text-sm font-semibold text-indigo-600 flex items-center gap-2">
+                  <span className="flex h-2 w-2 rounded-full bg-indigo-600 animate-pulse"></span>
+                  {status}
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-2xl font-black text-slate-800 tracking-tighter">{progress}%</span>
+                <p className="text-[10px] text-slate-400 font-bold uppercase">Scanning Area</p>
+              </div>
+            </div>
+            <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden shadow-inner border border-slate-200">
+              <div 
+                className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600 transition-all duration-700 ease-out relative"
+                style={{ width: `${progress}%` }}
+              >
+                <div className="absolute inset-0 bg-[length:20px_20px] bg-[linear-gradient(45deg,rgba(255,255,255,0.15)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.15)_50%,rgba(255,255,255,0.15)_75%,transparent_75%,transparent)] animate-[shimmer_1s_linear_infinite]"></div>
+              </div>
+            </div>
+            <p className="text-center text-[10px] text-slate-400 italic">Finding approximately 100-200 businesses for high-accuracy prospecting...</p>
+          </div>
+        )}
       </form>
+
+      <style>{`
+        @keyframes shimmer {
+          0% { background-position: 0 0; }
+          100% { background-position: 40px 0; }
+        }
+      `}</style>
     </div>
   );
 };

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Header from './components/Header';
 import SearchForm from './components/SearchForm';
 import LeadTable from './components/LeadTable';
@@ -10,8 +10,12 @@ import { fetchGmbLeads } from './services/geminiService';
 const App: React.FC = () => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [searchProgress, setSearchProgress] = useState(0);
+  const [searchStatus, setSearchStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [userCoords, setUserCoords] = useState<{ latitude: number, longitude: number } | undefined>();
+  
+  const progressInterval = useRef<number | null>(null);
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -30,8 +34,33 @@ const App: React.FC = () => {
   const handleSearch = useCallback(async (keyword: string, location: string, radius: number) => {
     setIsLoading(true);
     setError(null);
+    setSearchProgress(0);
+    setSearchStatus('Initializing Maps Connection...');
+
+    // Progress simulation
+    let currentProgress = 0;
+    const updateProgress = () => {
+      if (currentProgress < 90) {
+        currentProgress += Math.random() * 5;
+        setSearchProgress(Math.floor(currentProgress));
+        
+        if (currentProgress < 20) setSearchStatus('Connecting to Google Maps API...');
+        else if (currentProgress < 45) setSearchStatus(`Scanning ${location} for "${keyword}"...`);
+        else if (currentProgress < 70) setSearchStatus('Filtering rankings (#6 to #100)...');
+        else if (currentProgress < 90) setSearchStatus('Compiling lead details & distance data...');
+      }
+    };
+
+    progressInterval.current = window.setInterval(updateProgress, 800);
+
     try {
       const newLeads = await fetchGmbLeads(keyword, location, radius, userCoords);
+      
+      // Stop interval and complete progress
+      if (progressInterval.current) clearInterval(progressInterval.current);
+      setSearchProgress(100);
+      setSearchStatus('Data Compilation Complete!');
+
       if (newLeads.length === 0) {
         setError("No leads found ranking outside the top 5 for this specific search. Try a broader radius or a different keyword.");
       } else {
@@ -42,12 +71,15 @@ const App: React.FC = () => {
         });
       }
     } catch (err: any) {
+      if (progressInterval.current) clearInterval(progressInterval.current);
       console.error("App handleSearch error:", err);
-      // Display the actual error message if it's useful, else a generic one
       const errorMessage = err?.message || "An unexpected error occurred while fetching leads.";
       setError(`Search Failed: ${errorMessage}`);
     } finally {
-      setIsLoading(false);
+      setTimeout(() => {
+        setIsLoading(false);
+        setSearchProgress(0);
+      }, 1000);
     }
   }, [userCoords]);
 
@@ -57,11 +89,16 @@ const App: React.FC = () => {
       
       <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8 text-center sm:text-left">
-          <h2 className="text-3xl font-extrabold text-slate-900 mb-2">Lead Prospecting Engine</h2>
-          <p className="text-slate-600">Find businesses on Google Maps that need your help ranking higher. Target businesses from positions #6 to #100.</p>
+          <h2 className="text-3xl font-extrabold text-slate-900 mb-2 tracking-tight">Lead Prospecting Engine</h2>
+          <p className="text-slate-600">Find businesses ranking from position #6 to #100 that need your SEO services.</p>
         </div>
 
-        <SearchForm onSearch={handleSearch} isLoading={isLoading} />
+        <SearchForm 
+          onSearch={handleSearch} 
+          isLoading={isLoading} 
+          progress={searchProgress}
+          status={searchStatus}
+        />
 
         {error && (
           <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-8 rounded-r-lg shadow-sm animate-in fade-in slide-in-from-top-1">
@@ -74,7 +111,7 @@ const App: React.FC = () => {
               <div className="ml-3">
                 <h3 className="text-sm font-bold text-red-800">Error Encountered</h3>
                 <p className="text-sm text-red-700 mt-1">{error}</p>
-                <p className="text-xs text-red-600 mt-2 font-medium">Verify your API Key in Vercel settings if this persists.</p>
+                <p className="text-xs text-red-600 mt-2 font-medium">Verify your API Key in environment settings if this persists.</p>
               </div>
             </div>
           </div>
@@ -88,7 +125,7 @@ const App: React.FC = () => {
       <footer className="bg-white border-t border-slate-200 py-8 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-slate-400 text-sm">
           <p>&copy; {new Date().getFullYear()} GMB Lead Prospector Pro. All rights reserved.</p>
-          <p className="mt-1 font-medium">Built for SEO Agencies and B2B Prospecting.</p>
+          <p className="mt-1 font-medium">Professional SEO Agency Lead Generation Tool.</p>
         </div>
       </footer>
     </div>
