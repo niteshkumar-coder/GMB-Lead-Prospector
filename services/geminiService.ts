@@ -11,34 +11,24 @@ export const fetchGmbLeads = async (
   const apiKey = (window as any).process?.env?.API_KEY || process.env.API_KEY;
   
   if (!apiKey || apiKey.trim() === "") {
-    throw new Error("API_KEY is missing. Please configure it in your environment settings.");
+    throw new Error("API_KEY is missing. Please check your environment.");
   }
 
   const ai = new GoogleGenAI({ apiKey });
-  
-  // Using gemini-2.5-flash for reliable Maps Grounding
   const model = "gemini-2.5-flash"; 
   
-  // Define a clear origin point for the AI
-  const referencePoint = userCoords 
-    ? `User's Current GPS Location (Lat: ${userCoords.latitude}, Lng: ${userCoords.longitude})`
-    : `the geographic center of ${location}`;
+  const origin = userCoords 
+    ? `Coordinates: ${userCoords.latitude}, ${userCoords.longitude}`
+    : location;
 
-  const prompt = `You are a high-performance GMB Deep-Scanner. 
+  // Simplified prompt to avoid model confusion and ensure tool usage
+  const prompt = `Search for "${keyword}" within ${radius}km of ${origin} using Google Maps.
   
-  TARGET: Find approximately 100 business leads for "${keyword}" within a ${radius}km radius.
-  ORIGIN POINT: ${referencePoint}.
-
-  CRITICAL RULES:
-  1. QUANTITY: Aim for a list of 100 leads. If there are fewer than 100 businesses in the area, list ALL of them.
-  2. RANKING: Rank them from 1 to 100 based on their Google Maps prominence.
-  3. DISTANCE: Calculate the distance for EACH business starting EXACTLY from the GPS coordinates: ${userCoords ? `Lat ${userCoords.latitude}, Lng ${userCoords.longitude}` : location}.
-  4. RADIUS: Every result MUST be within ${radius}km of the origin.
-  5. FORMAT: Output ONLY a Markdown table. No text before or after.
-  6. TABLE COLUMNS: | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |
-
-  | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |
-  | :--- | :--- | :--- | :--- | :--- | :--- | :--- |`;
+  EXTRACT: Approximately 100 businesses.
+  DISTANCE: Calculate precisely from the origin point.
+  FORMAT: Markdown table ONLY.
+  
+  Columns: | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |`;
 
   try {
     const response = await ai.models.generateContent({
@@ -54,8 +44,8 @@ export const fetchGmbLeads = async (
             } : undefined
           }
         },
-        maxOutputTokens: 30000, // Sufficient for ~100 leads
-        temperature: 0.1
+        maxOutputTokens: 30000,
+        temperature: 0.2
       },
     });
 
@@ -63,16 +53,13 @@ export const fetchGmbLeads = async (
     const leads = parseLeadsFromMarkdown(text, keyword);
     
     if (leads.length === 0) {
-      if (text.toLowerCase().includes("limit") || text.toLowerCase().includes("quota")) {
-        throw new Error("API Limit reached. Please wait a moment.");
-      }
-      throw new Error(`No businesses found for "${keyword}" within ${radius}km. Try a broader search.`);
+      throw new Error(`The scanner couldn't find "${keyword}" in this specific ${radius}km area. Try increasing the radius or using a simpler keyword.`);
     }
 
     return leads;
   } catch (error: any) {
     console.error("Prospecting Error:", error);
-    throw new Error(error?.message || "An error occurred while scanning the area.");
+    throw new Error(error?.message || "Scan failed. Please try again.");
   }
 };
 
@@ -93,7 +80,7 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
     
     if (parts.length >= 5) {
       const cleanName = parts[0].replace(/\*\*/g, '').replace(/`/g, '');
-      if (!cleanName) return;
+      if (!cleanName || cleanName.length < 2) return;
 
       const rawRank = parts[2]?.replace(/[^0-9]/g, '') || '';
       const finalRank = parseInt(rawRank) || (index + 1);
@@ -112,6 +99,5 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
     }
   });
 
-  // Sort by rank ascending
   return leads.sort((a, b) => a.rank - b.rank);
 };
