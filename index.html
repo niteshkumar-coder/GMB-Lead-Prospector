@@ -3,12 +3,21 @@
 <html lang="en">
 <head>
     <script>
-      // CRITICAL: This must run before ANY other script or module loading
-      window.process = { env: {} };
+      // CRITICAL: Robust polyfill for process.env before any other script loads.
+      // This is necessary because Vite does not provide process.env by default in the browser.
+      (function() {
+        if (!window.process) {
+          window.process = { env: {} };
+        } else if (!window.process.env) {
+          window.process.env = {};
+        }
+        // Ensure API_KEY exists at least as an empty string to avoid SDK initialization crashes
+        window.process.env.API_KEY = window.process.env.API_KEY || "";
+      })();
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GMB Lead Prospector</title>
+    <title>GMB Lead Prospector Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
