@@ -2,43 +2,32 @@
 import { GoogleGenAI } from "@google/genai";
 import { Lead } from "../types";
 
-// Never access process.env at the top level. 
-// This function is only called when the user clicks 'Search'.
-const getAIClient = () => {
-  const apiKey = (window as any).process?.env?.API_KEY || (process as any)?.env?.API_KEY || '';
-  if (!apiKey) {
-    console.error("API_KEY is missing from environment");
-  }
-  return new GoogleGenAI({ apiKey });
-};
-
 export const fetchGmbLeads = async (
   keyword: string, 
   location: string, 
   radius: number,
   userCoords?: { latitude: number, longitude: number }
 ): Promise<Lead[]> => {
-  const ai = getAIClient();
-  const model = "gemini-2.5-flash"; 
+  // Always initialize right before use as per instructions for dynamic key handling
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
+  // Use gemini-2.5-flash for Maps Grounding support
+  const model = "gemini-2.5-flash-latest"; 
   
   const prompt = `You are a professional GMB Lead Prospector. 
-  TASK: Find 100 to 200 businesses for the keyword "${keyword}" within a ${radius}km radius of "${location}".
+  TASK: Find businesses for the keyword "${keyword}" in "${location}" within a ${radius}km radius.
   
-  TOOL USAGE INSTRUCTIONS:
-  1. Use Google Maps to find businesses strictly within the specified ${radius}km radius of "${location}".
-  2. Use Google Search to cross-reference which businesses are currently ranking below the top 5 (positions 6-100).
-  3. Verify phone numbers and website links using the tools.
+  FILTERING RULES:
+  1. Only include businesses that are NOT in the top 5 GMB results (ranking position 6th or lower).
+  2. For each business, collect: Name, Phone, Rank, Website, Maps Link, Rating, and Distance.
+  3. Aim to find as many leads as possible (up to 100 in this batch).
 
-  LEAD SELECTION CRITERIA:
-  - Target businesses that are NOT in the top 3-5 "Local Pack" or Map results.
-  - Prioritize businesses with lower ratings or those that are physically located further from the specific coordinate center of ${location} but still within ${radius}km.
-  
   OUTPUT FORMAT:
-  Return ONLY a Markdown table. Do not include introductory text.
-  Headers: | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |
+  Return the results ONLY as a Markdown table with these exact headers:
+  | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |
   | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 
-  Important: I need a very long list (as close to 200 as possible). If one search isn't enough, expand the search depth within the specified radius for better coverage.`;
+  If no website is available, write "None". Use Google Search and Google Maps tools to verify data.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -46,8 +35,7 @@ export const fetchGmbLeads = async (
       contents: prompt,
       config: {
         tools: [{ googleMaps: {} }, { googleSearch: {} }],
-        thinkingConfig: { thinkingBudget: 8000 },
-        maxOutputTokens: 12000, 
+        // Note: googleMaps tool requires no responseMimeType or responseSchema
         toolConfig: {
           retrievalConfig: {
             latLng: userCoords ? {
@@ -60,15 +48,17 @@ export const fetchGmbLeads = async (
     });
 
     const text = response.text || "";
-    let leads = parseLeadsFromMarkdown(text, keyword);
-    
-    if (leads.length === 0 && text.includes('|')) {
-       leads = fallbackParse(text, keyword);
+    if (!text || text.length < 10) {
+      throw new Error("The AI returned an empty or invalid response.");
     }
 
-    return leads;
-  } catch (error) {
-    console.error("Critical error in Gemini GMB Fetch:", error);
+    return parseLeadsFromMarkdown(text, keyword);
+  } catch (error: any) {
+    console.error("Gemini API Error:", error);
+    // Rethrow with more context if it's a known error type
+    if (error?.message?.includes('API_KEY')) {
+      throw new Error("Invalid or missing API Key. Please check your Vercel environment variables.");
+    }
     throw error;
   }
 };
@@ -77,6 +67,7 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
   const lines = md.split('\n');
   const leads: Lead[] = [];
   
+  // Find the table start
   const separatorIndex = lines.findIndex(l => l.includes('|') && l.includes('---'));
   if (separatorIndex === -1) return [];
 
@@ -86,13 +77,14 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
     const cleanLine = line.trim();
     if (!cleanLine.includes('|')) return;
     
-    const parts = cleanLine.split('|').map(p => p.trim());
+    // Split by pipe and clean up
+    const parts = cleanLine.split('|')
+      .map(p => p.trim())
+      .filter((p, i, arr) => !(i === 0 && p === '') && !(i === arr.length - 1 && p === ''));
     
-    if (parts[0] === '') parts.shift();
-    if (parts[parts.length - 1] === '') parts.pop();
-
     if (parts.length >= 5) {
       const name = parts[0];
+      // Skip header leftovers or empty names
       if (name.toLowerCase().includes('name') || name.includes('---') || name === '') return;
 
       leads.push({
@@ -110,28 +102,4 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
   });
 
   return leads;
-};
-
-const fallbackParse = (text: string, keyword: string): Lead[] => {
-    const leads: Lead[] = [];
-    const lines = text.split('\n');
-    lines.forEach((line, index) => {
-        if (line.includes('|') && line.split('|').length >= 6) {
-            const parts = line.split('|').map(p => p.trim()).filter(p => p !== '');
-            if (parts[0].toLowerCase().includes('name') || parts[0].includes('---')) return;
-            
-            leads.push({
-                id: `fb-lead-${Date.now()}-${index}`,
-                businessName: parts[0],
-                phoneNumber: parts[1] || 'N/A',
-                rank: parseInt(parts[2]?.replace(/[^0-9]/g, '')) || (index + 6),
-                website: parts[3] || 'None',
-                locationLink: parts[4] || '#',
-                rating: parseFloat(parts[5]) || 0,
-                distance: parts[6] || 'N/A',
-                keyword: keyword
-            });
-        }
-    });
-    return leads;
 };

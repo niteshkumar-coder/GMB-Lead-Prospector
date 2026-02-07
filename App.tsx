@@ -14,7 +14,6 @@ const App: React.FC = () => {
   const [userCoords, setUserCoords] = useState<{ latitude: number, longitude: number } | undefined>();
 
   useEffect(() => {
-    // Try to get user location for better search grounding
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -34,18 +33,19 @@ const App: React.FC = () => {
     try {
       const newLeads = await fetchGmbLeads(keyword, location, radius, userCoords);
       if (newLeads.length === 0) {
-        setError("We couldn't find any leads matching those criteria ranking outside the top 5.");
+        setError("No leads found ranking outside the top 5 for this specific search. Try a broader radius or a different keyword.");
       } else {
         setLeads(prev => {
-          // Merge and avoid duplicates by id/name
           const existingNames = new Set(prev.map(l => l.businessName.toLowerCase()));
           const uniqueNewLeads = newLeads.filter(l => !existingNames.has(l.businessName.toLowerCase()));
           return [...prev, ...uniqueNewLeads];
         });
       }
     } catch (err: any) {
-      console.error(err);
-      setError("Failed to fetch leads. Please try again later.");
+      console.error("App handleSearch error:", err);
+      // Display the actual error message if it's useful, else a generic one
+      const errorMessage = err?.message || "An unexpected error occurred while fetching leads.";
+      setError(`Search Failed: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -64,15 +64,17 @@ const App: React.FC = () => {
         <SearchForm onSearch={handleSearch} isLoading={isLoading} />
 
         {error && (
-          <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-8 rounded-r-lg">
+          <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-8 rounded-r-lg shadow-sm animate-in fade-in slide-in-from-top-1">
             <div className="flex">
               <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                <svg className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                 </svg>
               </div>
               <div className="ml-3">
-                <p className="text-sm text-red-700">{error}</p>
+                <h3 className="text-sm font-bold text-red-800">Error Encountered</h3>
+                <p className="text-sm text-red-700 mt-1">{error}</p>
+                <p className="text-xs text-red-600 mt-2 font-medium">Verify your API Key in Vercel settings if this persists.</p>
               </div>
             </div>
           </div>
@@ -86,7 +88,7 @@ const App: React.FC = () => {
       <footer className="bg-white border-t border-slate-200 py-8 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-slate-400 text-sm">
           <p>&copy; {new Date().getFullYear()} GMB Lead Prospector Pro. All rights reserved.</p>
-          <p className="mt-1">Built for SEO Agencies and B2B Prospecting.</p>
+          <p className="mt-1 font-medium">Built for SEO Agencies and B2B Prospecting.</p>
         </div>
       </footer>
     </div>
