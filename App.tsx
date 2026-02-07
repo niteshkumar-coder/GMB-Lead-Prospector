@@ -46,8 +46,8 @@ const App: React.FC = () => {
         
         if (currentProgress < 20) setSearchStatus('Connecting to Google Maps API...');
         else if (currentProgress < 45) setSearchStatus(`Scanning ${location} for "${keyword}"...`);
-        else if (currentProgress < 70) setSearchStatus('Filtering rankings (#6 to #100)...');
-        else if (currentProgress < 90) setSearchStatus('Compiling lead details & distance data...');
+        else if (currentProgress < 70) setSearchStatus('Analyzing rankings (Pos #1 to #100)...');
+        else if (currentProgress < 90) setSearchStatus('Compiling business profiles & distances...');
       }
     };
 
@@ -59,10 +59,10 @@ const App: React.FC = () => {
       // Stop interval and complete progress
       if (progressInterval.current) clearInterval(progressInterval.current);
       setSearchProgress(100);
-      setSearchStatus('Data Compilation Complete!');
+      setSearchStatus('Data Extraction Complete!');
 
       if (newLeads.length === 0) {
-        setError("No leads found ranking outside the top 5 for this specific search. Try a broader radius or a different keyword.");
+        setError("No leads found in this area. Try a broader radius or a different keyword.");
       } else {
         setLeads(prev => {
           const existingNames = new Set(prev.map(l => l.businessName.toLowerCase()));
@@ -89,8 +89,8 @@ const App: React.FC = () => {
       
       <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8 text-center sm:text-left">
-          <h2 className="text-3xl font-extrabold text-slate-900 mb-2 tracking-tight">Lead Prospecting Engine</h2>
-          <p className="text-slate-600">Find businesses ranking from position #6 to #100 that need your SEO services.</p>
+          <h2 className="text-3xl font-extrabold text-slate-900 mb-2 tracking-tight">Top 100 GMB Business Finder</h2>
+          <p className="text-slate-600">Extract complete business details for the Top 100 rankings in any area.</p>
         </div>
 
         <SearchForm 
@@ -111,7 +111,7 @@ const App: React.FC = () => {
               <div className="ml-3">
                 <h3 className="text-sm font-bold text-red-800">Error Encountered</h3>
                 <p className="text-sm text-red-700 mt-1">{error}</p>
-                <p className="text-xs text-red-600 mt-2 font-medium">Verify your API Key in environment settings if this persists.</p>
+                <p className="text-xs text-red-600 mt-2 font-medium">Please check your internet or search parameters.</p>
               </div>
             </div>
           </div>
@@ -124,8 +124,8 @@ const App: React.FC = () => {
 
       <footer className="bg-white border-t border-slate-200 py-8 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-slate-400 text-sm">
-          <p>&copy; {new Date().getFullYear()} GMB Lead Prospector Pro. All rights reserved.</p>
-          <p className="mt-1 font-medium">Professional SEO Agency Lead Generation Tool.</p>
+          <p>&copy; {new Date().getFullYear()} GMB Data Prospector Pro. All rights reserved.</p>
+          <p className="mt-1 font-medium">Professional Google Maps Analysis Tool.</p>
         </div>
       </footer>
     </div>

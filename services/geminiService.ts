@@ -23,18 +23,18 @@ export const fetchGmbLeads = async (
     ? `the user's current GPS coordinates (${userCoords.latitude}, ${userCoords.longitude})`
     : `the geographic center of ${location}`;
 
-  const prompt = `You are an expert GMB Lead Generator. 
+  const prompt = `You are an expert GMB Data Extractor. 
   TASK: Find exactly 100 to 200 businesses for the keyword "${keyword}" in or around "${location}" within a ${radius}km radius.
   
-  CRITICAL INSTRUCTIONS FOR DISTANCE:
-  1. Calculate the exact distance for every business relative to ${referencePoint}.
-  2. STRICT UNIT FORMAT: If distance is < 1000m, use "meters" abbreviated as "m" (e.g., "350 m"). If distance is >= 1km, use "kilometers" abbreviated as "km" (e.g., "1.2 km").
-  3. DATA SOURCE: Only include businesses ranking 6th or lower in GMB results (skip the top 5).
+  CRITICAL INSTRUCTIONS:
+  1. RANKING SCOPE: Include ALL businesses ranking from the 1st position down to the 100th position. Do not skip any businesses.
+  2. DISTANCE: Calculate the exact distance for every business relative to ${referencePoint}.
+  3. STRICT UNIT FORMAT: Use "m" for meters (e.g., "350 m") and "km" for kilometers (e.g., "1.2 km").
 
   REQUIRED DATA FIELDS FOR EACH BUSINESS:
   - Business Name
   - Phone Number
-  - GMB Rank (Position number like 7th, 15th, 100th)
+  - GMB Rank (Position number: 1st, 2nd, 3rd... up to 100th)
   - Website URL (Write "None" if not available)
   - Google Maps Link (Direct link to the place)
   - Rating (Numerical star rating)
@@ -45,7 +45,7 @@ export const fetchGmbLeads = async (
   | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |
   | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 
-  Try to find at least 100-200 leads. If the area is small, find as many as possible ranking below the top 5.`;
+  Maximize the output to provide at least 100 leads. If the area is small, find all available businesses in the top 100 rankings.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -101,7 +101,6 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
       .map(p => p.trim())
       .filter((p, i, arr) => !(i === 0 && p === '') && !(i === arr.length - 1 && p === ''));
     
-    // Check for at least name and distance parts
     if (parts.length >= 7) {
       const name = parts[0];
       if (name.toLowerCase().includes('name') || name.includes('---') || name === '') return;
@@ -110,7 +109,7 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
         id: `lead-${Date.now()}-${index}`,
         businessName: name,
         phoneNumber: parts[1] || 'N/A',
-        rank: parseInt(parts[2]?.replace(/[^0-9]/g, '')) || (index + 6),
+        rank: parseInt(parts[2]?.replace(/[^0-9]/g, '')) || (index + 1),
         website: parts[3] || 'None',
         locationLink: parts[4] || '#',
         rating: parseFloat(parts[5]) || 0,

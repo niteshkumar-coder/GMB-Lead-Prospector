@@ -31,7 +31,6 @@ const LinkHealthIndicator: React.FC<{ url: string }> = ({ url }) => {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
-        // Using no-cors as many sites block direct fetch, but it might still error if the domain is dead
         await fetch(targetUrl, { mode: 'no-cors', signal: controller.signal });
         clearTimeout(timeoutId);
         setStatus('ok');
@@ -119,10 +118,10 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
       const doc = new jsPDF({ orientation: 'landscape' });
       
       doc.setFontSize(18);
-      doc.text('GMB Lead Prospector Report', 14, 20);
+      doc.text('GMB Rankings Report', 14, 20);
       doc.setFontSize(10);
       doc.setTextColor(100);
-      doc.text(`Generated: ${new Date().toLocaleString()} | Leads: ${leads.length}`, 14, 30);
+      doc.text(`Generated: ${new Date().toLocaleString()} | Results: ${leads.length}`, 14, 30);
 
       autoTable(doc, {
         startY: 35,
@@ -137,7 +136,7 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
         styles: { fontSize: 8 },
       });
 
-      doc.save(`gmb_prospects_${Date.now()}.pdf`);
+      doc.save(`gmb_rankings_${Date.now()}.pdf`);
     } catch (error) {
       console.error(error);
       alert("Error generating PDF. Please try CSV.");
@@ -155,8 +154,8 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
         </div>
-        <h3 className="text-lg font-semibold text-slate-900">No leads captured yet</h3>
-        <p className="text-slate-500 max-w-xs mx-auto">Use the form above to find businesses ranking #6-100 on Google Maps.</p>
+        <h3 className="text-lg font-semibold text-slate-900">No rankings captured yet</h3>
+        <p className="text-slate-500 max-w-xs mx-auto">Use the form above to extract businesses from the Top 100 results on Google Maps.</p>
       </div>
     );
   }
@@ -172,8 +171,8 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
       <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
         <div>
-          <h3 className="font-bold text-slate-800">Prospecting Results</h3>
-          <p className="text-xs text-slate-500 font-medium">{leads.length} leads ranking below Top 5</p>
+          <h3 className="font-bold text-slate-800">Extracted Results</h3>
+          <p className="text-xs text-slate-500 font-medium">{leads.length} businesses from Top 100 Rankings</p>
         </div>
         
         <div className="relative">
@@ -244,7 +243,7 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
                   <div className="text-sm text-slate-600 font-medium">{lead.phoneNumber}</div>
                 </td>
                 <td className="px-6 py-4">
-                  <span className={`px-2 py-1 rounded-md text-xs font-bold ${lead.rank <= 20 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                  <span className={`px-2 py-1 rounded-md text-xs font-bold ${lead.rank <= 3 ? 'bg-emerald-50 text-emerald-700' : lead.rank <= 10 ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
                     {lead.rank}th
                   </span>
                 </td>
