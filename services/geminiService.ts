@@ -17,24 +17,20 @@ export const fetchGmbLeads = async (
   radius: number,
   userCoords?: { latitude: number, longitude: number }
 ): Promise<Lead[]> => {
-  const apiKey = process.env.API_KEY;
+  // Directly initialize using process.env.API_KEY as per coding guidelines
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  if (!apiKey || apiKey.trim() === "") {
-    throw new Error("API_KEY is missing. Please check your system configuration.");
-  }
-
-  const ai = new GoogleGenAI({ apiKey });
-  // Maps grounding is only supported in Gemini 2.5 series models.
+  // Maps grounding is supported in Gemini 2.5 series models.
   const model = "gemini-2.5-flash"; 
   
   const origin = userCoords 
     ? `GPS Coordinates (${userCoords.latitude}, ${userCoords.longitude})`
     : location;
 
-  // Reduced to 15 leads per request. This is the "Sweet Spot" for Free Tier tool usage.
+  // Search prompt targeting leads ranking below the top 5
   const prompt = `GMB LEAD GEN: Find 15 businesses for "${keyword}" near ${origin} (${radius}km).
   
-  TARGET: Businesses ranking rank 6 to 30.
+  TARGET: Businesses ranking rank 6 to 30 (strictly below top 5 results).
   
   RETURN DATA:
   1. Business Name
@@ -69,7 +65,7 @@ export const fetchGmbLeads = async (
     const leads = parseLeadsFromMarkdown(text, keyword);
     
     if (leads.length === 0) {
-      throw new Error(`The API returned an empty response. Try a broader search keyword.`);
+      throw new Error(`The scanning engine found no matching results for this keyword. Try a broader search.`);
     }
 
     return leads;
@@ -78,17 +74,14 @@ export const fetchGmbLeads = async (
     
     const errorMsg = error.message || "";
     
-    if (errorMsg.includes("Requested entity was not found")) {
-      throw new Error("API_KEY_ERROR: The current API key is invalid or not properly configured for Google Maps grounding.");
-    }
-
+    // Check for quota exhaustion and return specific wait time if available
     if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
       const waitMatch = errorMsg.match(/retry in ([\d.]+)s/);
       const waitSeconds = waitMatch ? Math.ceil(parseFloat(waitMatch[1])) : 60;
-      throw new QuotaError("API Quota Reached", waitSeconds);
+      throw new QuotaError("API limit reached", waitSeconds);
     }
     
-    throw new Error(errorMsg || "Scan failed. Check your network connection.");
+    throw new Error(errorMsg || "Communication failure. Please verify your connection.");
   }
 };
 
