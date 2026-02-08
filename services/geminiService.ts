@@ -11,37 +11,54 @@ export class QuotaError extends Error {
   }
 }
 
+/**
+ * Helper to extract numeric value from distance strings like "5.2 km" or "800 m"
+ */
+const parseDistanceValue = (distStr: string): number => {
+  if (!distStr) return 0;
+  const clean = distStr.toLowerCase().replace(/,/g, '').trim();
+  const val = parseFloat(clean);
+  if (isNaN(val)) return 0;
+  if (clean.endsWith('km')) return val;
+  if (clean.endsWith('m')) return val / 1000;
+  return val;
+};
+
 export const fetchGmbLeads = async (
   keyword: string, 
   location: string, 
   radius: number,
   userCoords?: { latitude: number, longitude: number }
 ): Promise<Lead[]> => {
-  // Directly initialize using process.env.API_KEY as per guidelines.
-  // The system automatically injects this variable.
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-  // Gemini 2.5 series models support Google Maps grounding.
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API Key is required to perform this scan. Please connect your account.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   const model = "gemini-2.5-flash"; 
   
   const origin = userCoords 
     ? `GPS Coordinates (${userCoords.latitude}, ${userCoords.longitude})`
     : location;
 
-  const prompt = `GMB LEAD GEN: Find 15 businesses for "${keyword}" near ${origin} (${radius}km).
+  const prompt = `GMB DEEP SCAN: Identify 15 businesses for "${keyword}" near ${origin}.
   
-  TARGET: Businesses ranking rank 6 to 30.
+  STRICT RADIUS LIMIT: All businesses MUST be within exactly ${radius}km of the starting point. 
+  DO NOT return any results located further than ${radius}km away.
   
-  RETURN DATA:
+  RANKING TARGET: Focus on businesses ranking in positions 6 through 30 (below the top 5).
+  
+  REQUIRED DATA FIELDS:
   1. Business Name
-  2. Phone
-  3. Rank (approximate position)
-  4. Website URL
-  5. Maps Link
-  6. Rating
-  7. Distance from ${origin}
+  2. Phone Number
+  3. Approximate Rank
+  4. Website URL (If none, write 'None')
+  5. Google Maps Link
+  6. Rating (numeric 0.0 - 5.0)
+  7. Exact Distance from ${origin} (specify km or m)
   
-  OUTPUT: Markdown table ONLY.`;
+  OUTPUT: Provide a Markdown table with these columns ONLY. No preamble or chatty text.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -62,25 +79,44 @@ export const fetchGmbLeads = async (
     });
 
     const text = response.text || "";
-    const leads = parseLeadsFromMarkdown(text, keyword);
-    
-    if (leads.length === 0) {
-      throw new Error(`The search returned no results. Please try a different keyword or location.`);
+    if (!text.includes('|')) {
+       throw new Error("The scanner could not find structured ranking data for this keyword. Try a more common business category.");
     }
 
-    return leads;
-  } catch (error: any) {
-    console.error("GMB Fetch Error:", error);
+    const allLeads = parseLeadsFromMarkdown(text, keyword);
     
-    const errorMsg = error.message || "";
+    // STRICT FILTERING: Ensure code-level enforcement of the radius
+    const filteredLeads = allLeads.filter(lead => {
+      const distValue = parseDistanceValue(lead.distance);
+      // We allow a small 5% buffer for rounding errors in AI estimation, otherwise strictly enforced
+      return distValue <= radius * 1.05;
+    });
+
+    if (filteredLeads.length === 0 && allLeads.length > 0) {
+      throw new Error(`The scanner found leads, but they were all outside your ${radius}km radius. Try increasing the search radius.`);
+    }
+
+    if (filteredLeads.length === 0) {
+      throw new Error("No qualifying businesses found within the specified range. Try increasing the search radius.");
+    }
+
+    return filteredLeads;
+  } catch (error: any) {
+    console.error("GMB Internal Error:", error);
+    
+    const errorMsg = error.message || "Unknown error";
     
     if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
       const waitMatch = errorMsg.match(/retry in ([\d.]+)s/);
       const waitSeconds = waitMatch ? Math.ceil(parseFloat(waitMatch[1])) : 60;
-      throw new QuotaError("API limit reached", waitSeconds);
+      throw new QuotaError("System cooling down... please wait.", waitSeconds);
     }
     
-    throw new Error("The service is currently processing a high volume of requests. Please try again in a moment.");
+    if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("API Key")) {
+      throw new Error("API Key issue detected. Please re-authenticate the scanner.");
+    }
+    
+    throw new Error(errorMsg);
   }
 };
 
@@ -104,17 +140,17 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
       if (!cleanName) return;
 
       const rawRank = parts[2]?.replace(/[^0-9]/g, '') || '';
-      const finalRank = parseInt(rawRank) || (index + 1);
+      const finalRank = parseInt(rawRank) || (index + 6); 
 
       leads.push({
-        id: `lead-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
+        id: `lead-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`,
         businessName: cleanName,
         phoneNumber: parts[1] || 'N/A',
         rank: finalRank,
         website: parts[3] || 'None',
         locationLink: parts[4] || '#',
         rating: parseFloat(parts[5]) || 0,
-        distance: parts[6] || '0 km',
+        distance: parts[6] || 'N/A',
         keyword: keyword
       });
     }
