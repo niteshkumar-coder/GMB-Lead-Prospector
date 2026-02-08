@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Header from './components/Header';
 import SearchForm from './components/SearchForm';
@@ -6,6 +5,17 @@ import LeadTable from './components/LeadTable';
 import LeadStats from './components/LeadStats';
 import { Lead } from './types';
 import { fetchGmbLeads, QuotaError } from './services/geminiService';
+
+// Fix: Define AIStudio interface to match environmental expectations and ensure identical modifiers for the aistudio property on Window.
+declare global {
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
+  interface Window {
+    readonly aistudio: AIStudio;
+  }
+}
 
 const App: React.FC = () => {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -41,6 +51,17 @@ const App: React.FC = () => {
     requestLocation();
   }, [requestLocation]);
 
+  const handleSelectKey = async () => {
+    try {
+      await window.aistudio.openSelectKey();
+      // Assume success as per platform instructions to avoid race conditions
+      setError(null);
+      setRetryTimer(null);
+    } catch (e) {
+      console.error("Key selection failed", e);
+    }
+  };
+
   const handleCancelCooldown = () => {
     if (countdownInterval.current) clearInterval(countdownInterval.current);
     setRetryTimer(null);
@@ -71,26 +92,26 @@ const App: React.FC = () => {
     setError(null);
     setRetryTimer(null);
     setSearchProgress(0);
-    setSearchStatus('Establishing Secure Connection...');
+    setSearchStatus('Connecting to Google Maps API...');
     setLastSearchParams({ k: keyword, l: location, r: radius });
 
     let currentProgress = 0;
     progressInterval.current = window.setInterval(() => {
       if (currentProgress < 95) {
-        currentProgress += (Math.random() * 1.2 + 0.3);
+        currentProgress += (Math.random() * 1.5 + 0.5);
         setSearchProgress(Math.floor(currentProgress));
-        if (currentProgress < 30) setSearchStatus('Scanning Google Maps Layer...');
-        else if (currentProgress < 70) setSearchStatus('Identifying Low-Ranking Targets...');
-        else setSearchStatus('Finalizing Lead Report...');
+        if (currentProgress < 30) setSearchStatus('Bypassing Top 5 Ads...');
+        else if (currentProgress < 70) setSearchStatus('Fetching Ranked Prospect Data...');
+        else setSearchStatus('Verifying Contact Details...');
       }
-    }, 400);
+    }, 300);
 
     try {
       const newLeads = await fetchGmbLeads(keyword, location, radius, userCoords);
       if (progressInterval.current) clearInterval(progressInterval.current);
       setSearchProgress(100);
-      setSearchStatus('Success! Leads found.');
-      // Persist leads: Add new ones while avoiding duplicates by ID or name
+      setSearchStatus('Deep Scan Complete!');
+      
       setLeads(prev => {
         const existingNames = new Set(prev.map(l => l.businessName.toLowerCase()));
         const uniqueNew = newLeads.filter(l => !existingNames.has(l.businessName.toLowerCase()));
@@ -100,9 +121,12 @@ const App: React.FC = () => {
       if (progressInterval.current) clearInterval(progressInterval.current);
       
       if (err instanceof QuotaError) {
-        setError(`FREE TIER LIMIT: Too many requests. Resuming scan in ${err.retryAfter}s...`);
+        setError(`API LIMIT: Request was too heavy for Free Tier.`);
         setRetryTimer(err.retryAfter);
-        setSearchStatus('System Cooling Down...');
+        setSearchStatus('Cooldown Active...');
+      } else if (err.message.includes("API_KEY_INVALID")) {
+        setError("Invalid API Key or Session. Please select a valid key.");
+        // Prompt for key selection automatically if possible
       } else {
         setError(err?.message || "Scan failed. Please try again.");
       }
@@ -122,50 +146,74 @@ const App: React.FC = () => {
         <div className="mb-8 flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="text-center sm:text-left">
             <h2 className="text-3xl font-extrabold text-slate-900 mb-2 tracking-tight flex items-center gap-3">
-              Deep Lead Scanner
-              {retryTimer !== null && (
-                <span className="text-[10px] bg-amber-500 text-white px-2 py-0.5 rounded uppercase font-black animate-pulse shadow-sm">
-                  Limited
+              GMB Lead Deep-Scanner
+              {leads.length > 0 && (
+                <span className="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-black">
+                  {leads.length} LEADS
                 </span>
               )}
             </h2>
-            <p className="text-slate-600 font-medium tracking-tight">
-              Collecting businesses ranking below top 5 for local SEO leads.
+            <p className="text-slate-500 font-medium max-w-lg">
+              Optimized for Free Tier: Finding rank 6-30 targets in small batches to avoid API blocks.
             </p>
           </div>
           
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border ${geoStatus === 'active' ? 'bg-indigo-50 text-indigo-700 border-indigo-200 shadow-sm' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
-            <span className={`h-2 w-2 rounded-full ${geoStatus === 'active' ? 'bg-indigo-500 animate-pulse' : 'bg-slate-300'}`}></span>
-            {geoStatus === 'active' ? 'Precision GPS Active' : 'City Mode'}
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={handleSelectKey}
+              className="px-4 py-2 bg-slate-900 text-white text-xs font-black uppercase tracking-widest rounded-lg hover:bg-slate-800 transition-all flex items-center gap-2 shadow-lg"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
+              Use Paid Key
+            </button>
           </div>
         </div>
 
         {retryTimer !== null && (
-          <div className="mb-8 bg-white border-2 border-amber-200 p-8 rounded-3xl flex flex-col items-center text-center shadow-xl animate-in fade-in zoom-in-95 duration-500">
-            <div className="relative">
-              <div className="w-20 h-20 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mb-4 border-4 border-amber-100">
-                <svg className="w-10 h-10 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <div className="mb-8 bg-slate-900 text-white p-8 rounded-[2rem] flex flex-col items-center text-center shadow-2xl relative overflow-hidden border-4 border-indigo-500/20">
+            <div className="absolute top-0 left-0 w-full h-1 bg-indigo-500 animate-pulse"></div>
+            
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-12 h-12 bg-indigo-500/20 text-indigo-400 rounded-full flex items-center justify-center animate-pulse">
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
+              </div>
+              <h3 className="text-xl font-black uppercase tracking-tighter">Quota Limit Reached</h3>
+            </div>
+
+            <p className="text-slate-400 text-sm mb-8 max-w-sm">
+              The Gemini Free Tier allows very few "Google Maps" searches per minute. To remove this wait forever, use your own <b>Paid GCP API Key</b>.
+            </p>
+            
+            <div className="flex flex-col items-center gap-6">
+              <div className="flex items-end gap-2">
+                <span className="text-7xl font-black tracking-tighter tabular-nums text-indigo-400 leading-none">{retryTimer}</span>
+                <span className="text-xl font-black text-indigo-400/50 mb-1 uppercase tracking-widest">sec</span>
+              </div>
+
+              <div className="flex flex-wrap justify-center gap-4">
+                <button 
+                  onClick={handleSelectKey}
+                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl transition-all shadow-[0_0_20px_rgba(79,70,229,0.4)] active:scale-95 text-sm"
+                >
+                  UPGRADE KEY (0 SEC WAIT)
+                </button>
+                <button 
+                  onClick={handleCancelCooldown}
+                  className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-black rounded-xl transition-all text-sm"
+                >
+                  CANCEL SCAN
+                </button>
               </div>
             </div>
             
-            <h3 className="text-2xl font-black text-slate-800 mb-2 uppercase tracking-tighter italic">Free Tier Limit Reached</h3>
-            <p className="text-slate-500 text-sm font-medium mb-6 max-w-md">
-              Google Gemini limits "Google Maps" tool usage on free accounts. We will automatically resume the scan shortly.
-            </p>
-            
-            <div className="flex flex-col items-center gap-4 w-full max-w-xs">
-              <div className="text-6xl font-black text-amber-500 tracking-tighter tabular-nums bg-amber-50 px-8 py-4 rounded-2xl border border-amber-100 shadow-inner">
-                {retryTimer}<span className="text-2xl ml-1 text-amber-300">s</span>
-              </div>
-              
-              <button 
-                onClick={handleCancelCooldown}
-                className="text-xs font-black text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors p-2 underline decoration-2 underline-offset-4"
-              >
-                Cancel & Reset Scan
-              </button>
+            <div className="mt-8 pt-8 border-t border-slate-800 w-full flex justify-center gap-8 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+              <span>Auto-Resume Enabled</span>
+              <span>•</span>
+              <span>Data Persistent</span>
+              <span>•</span>
+              <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="text-indigo-400 hover:underline">Billing Docs</a>
             </div>
           </div>
         )}
@@ -179,36 +227,42 @@ const App: React.FC = () => {
         />
 
         {error && retryTimer === null && (
-          <div className="bg-red-50 border-2 border-red-100 p-5 mb-8 rounded-2xl flex items-start gap-4 shadow-sm animate-in slide-in-from-top-2">
-            <div className="bg-red-100 p-2 rounded-xl text-red-600">
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+          <div className="bg-red-900/10 border-2 border-red-500/20 p-6 mb-8 rounded-2xl flex items-center justify-between shadow-sm animate-in slide-in-from-top-4">
+            <div className="flex items-center gap-4">
+              <div className="p-2 bg-red-500 text-white rounded-lg shadow-lg">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-red-900 uppercase tracking-tight">Scanner Halted</h3>
+                <p className="text-xs text-red-800 mt-0.5 font-bold opacity-75">{error}</p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-sm font-black text-red-800 uppercase tracking-tight">Scan Interrupted</h3>
-              <p className="text-sm text-red-700 mt-0.5 font-medium">{error}</p>
-            </div>
+            {error.includes("API_KEY_INVALID") && (
+              <button onClick={handleSelectKey} className="px-4 py-2 bg-red-600 text-white text-xs font-black rounded-lg">FIX KEY</button>
+            )}
           </div>
         )}
 
         {leads.length > 0 && <LeadStats leads={leads} />}
         
         {leads.length > 0 && (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <div className="animate-in fade-in slide-in-from-bottom-6 duration-1000">
             <LeadTable leads={leads} />
           </div>
         )}
       </main>
 
-      <footer className="bg-white border-t border-slate-200 py-10 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col items-center gap-4">
-          <div className="flex items-center gap-2 opacity-30 grayscale">
-            <div className="w-6 h-6 bg-slate-600 rounded"></div>
-            <span className="font-black text-sm tracking-tighter">PRECISION SCANNERS</span>
+      <footer className="bg-white border-t border-slate-200 py-12 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col items-center gap-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-1 bg-indigo-600 rounded-full"></div>
+            <span className="font-black text-lg tracking-tighter text-slate-800">PRECISION PROSPECTOR</span>
+            <div className="w-10 h-1 bg-indigo-600 rounded-full"></div>
           </div>
-          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest text-center">
-            &copy; {new Date().getFullYear()} Lead Prospector Engine • Powered by Gemini 2.5 • Smart Rate-Limit Recovery Enabled
+          <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] text-center max-w-sm leading-relaxed">
+            Lead Generation Engine v2.0 • Micro-Batch Processing Enabled • Optimized for Free Tier Resilience
           </p>
         </div>
       </footer>

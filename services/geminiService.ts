@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { Lead } from "../types";
 
@@ -17,30 +16,37 @@ export const fetchGmbLeads = async (
   radius: number,
   userCoords?: { latitude: number, longitude: number }
 ): Promise<Lead[]> => {
-  const apiKey = (window as any).process?.env?.API_KEY || process.env.API_KEY;
+  // Always create a fresh instance to ensure it picks up any newly selected API keys
+  const apiKey = process.env.API_KEY;
   
   if (!apiKey || apiKey.trim() === "") {
     throw new Error("API_KEY is missing. Please ensure your environment is configured.");
   }
 
   const ai = new GoogleGenAI({ apiKey });
+  // Maps grounding is only supported in Gemini 2.5 series models.
   const model = "gemini-2.5-flash"; 
   
   const origin = userCoords 
     ? `GPS Coordinates (${userCoords.latitude}, ${userCoords.longitude})`
     : location;
 
-  // Reduced target to 40 to prevent internal Maps tool timeouts and 429s on Free Tier
-  const prompt = `GMB SCAN: Find 40 businesses for "${keyword}" near ${origin} (${radius}km).
+  // Reduced to 15 leads per request. This is the "Sweet Spot" for Free Tier tool usage.
+  // We use "Lead Persistence" in the UI to build a bigger list over multiple small scans.
+  const prompt = `GMB LEAD GEN: Find 15 businesses for "${keyword}" near ${origin} (${radius}km).
   
-  CRITICAL: Focus on businesses ranking rank 6 to 50 (below top 5).
+  TARGET: Businesses ranking rank 6 to 30.
   
-  INSTRUCTIONS:
-  1. Use Google Maps tool.
-  2. Return ONLY a Markdown table: 
-  | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |
+  RETURN DATA:
+  1. Business Name
+  2. Phone
+  3. Rank (approximate position)
+  4. Website URL
+  5. Maps Link
+  6. Rating
+  7. Distance from ${origin}
   
-  Constraint: Table only, no text.`;
+  OUTPUT: Markdown table ONLY.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -56,7 +62,7 @@ export const fetchGmbLeads = async (
             } : undefined
           }
         },
-        maxOutputTokens: 20000,
+        // Recommendation: Avoid setting maxOutputTokens without a thinkingBudget as it may block responses in 2.5 series models.
         temperature: 0.1
       },
     });
@@ -65,7 +71,7 @@ export const fetchGmbLeads = async (
     const leads = parseLeadsFromMarkdown(text, keyword);
     
     if (leads.length === 0) {
-      throw new Error(`The scanner returned empty results. Try a broader search keyword.`);
+      throw new Error(`The API didn't return any table data. Try a simpler keyword.`);
     }
 
     return leads;
@@ -73,7 +79,13 @@ export const fetchGmbLeads = async (
     console.error("GMB Fetch Error:", error);
     
     const errorMsg = error.message || "";
-    // Resource Exhausted or 429 is common on Free Tier
+    
+    // Check for "Requested entity was not found" - platform specific key error
+    if (errorMsg.includes("Requested entity was not found")) {
+      throw new Error("API_KEY_INVALID: Please re-select your API key using the 'Select Key' button.");
+    }
+
+    // Capture precise wait time from 429 error headers if available
     if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
       const waitMatch = errorMsg.match(/retry in ([\d.]+)s/);
       const waitSeconds = waitMatch ? Math.ceil(parseFloat(waitMatch[1])) : 60;
