@@ -17,20 +17,20 @@ export const fetchGmbLeads = async (
   radius: number,
   userCoords?: { latitude: number, longitude: number }
 ): Promise<Lead[]> => {
-  // Directly initialize using process.env.API_KEY as per coding guidelines
+  // Directly initialize using process.env.API_KEY as per guidelines.
+  // The system automatically injects this variable.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  // Maps grounding is supported in Gemini 2.5 series models.
+  // Gemini 2.5 series models support Google Maps grounding.
   const model = "gemini-2.5-flash"; 
   
   const origin = userCoords 
     ? `GPS Coordinates (${userCoords.latitude}, ${userCoords.longitude})`
     : location;
 
-  // Search prompt targeting leads ranking below the top 5
   const prompt = `GMB LEAD GEN: Find 15 businesses for "${keyword}" near ${origin} (${radius}km).
   
-  TARGET: Businesses ranking rank 6 to 30 (strictly below top 5 results).
+  TARGET: Businesses ranking rank 6 to 30.
   
   RETURN DATA:
   1. Business Name
@@ -65,7 +65,7 @@ export const fetchGmbLeads = async (
     const leads = parseLeadsFromMarkdown(text, keyword);
     
     if (leads.length === 0) {
-      throw new Error(`The scanning engine found no matching results for this keyword. Try a broader search.`);
+      throw new Error(`The search returned no results. Please try a different keyword or location.`);
     }
 
     return leads;
@@ -74,14 +74,13 @@ export const fetchGmbLeads = async (
     
     const errorMsg = error.message || "";
     
-    // Check for quota exhaustion and return specific wait time if available
     if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
       const waitMatch = errorMsg.match(/retry in ([\d.]+)s/);
       const waitSeconds = waitMatch ? Math.ceil(parseFloat(waitMatch[1])) : 60;
       throw new QuotaError("API limit reached", waitSeconds);
     }
     
-    throw new Error(errorMsg || "Communication failure. Please verify your connection.");
+    throw new Error("The service is currently processing a high volume of requests. Please try again in a moment.");
   }
 };
 
