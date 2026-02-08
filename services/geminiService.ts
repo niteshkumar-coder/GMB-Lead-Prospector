@@ -24,14 +24,18 @@ export const fetchGmbLeads = async (
 
   const prompt = `GMB DEEP SCAN: Find ~100 businesses for "${keyword}" near ${origin} (Radius: ${radius}km).
   
+  CORE MISSION: 
+  Identify businesses that are currently ranking BELOW the top 5 GMB results. These are prime leads for SEO/Marketing.
+  
   INSTRUCTIONS:
-  1. Use Google Maps tool to fetch REAL businesses.
-  2. List up to 100 results, especially those ranked below top 10.
-  3. Calculate distance EXACTLY from the origin provided.
-  4. Return ONLY a Markdown table with these columns: 
+  1. Use Google Maps tool to fetch REAL businesses in this area.
+  2. Provide a list of up to 100 businesses.
+  3. Include businesses with poor or mediocre rankings (Rank 6 to 100).
+  4. Calculate distance EXACTLY from: ${origin}.
+  5. Return ONLY a Markdown table with these columns: 
   | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |
   
-  Format: Table only, no intro text.`;
+  Format: Table only. No conversational filler.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -56,21 +60,22 @@ export const fetchGmbLeads = async (
     const leads = parseLeadsFromMarkdown(text, keyword);
     
     if (leads.length === 0) {
-      throw new Error(`The scanner found 0 results for "${keyword}". Try a larger radius or check if location access is blocked.`);
+      throw new Error(`No businesses found for "${keyword}" within ${radius}km. Try a broader search.`);
     }
 
     return leads;
   } catch (error: any) {
     console.error("GMB Fetch Error:", error);
     
-    // Check for Quota/Rate Limit error
-    if (error.message?.includes("429") || error.message?.includes("quota")) {
-      const waitMatch = error.message.match(/retry in ([\d.]+)s/);
-      const waitTime = waitMatch ? waitMatch[1] : "60";
-      throw new Error(`API LIMIT REACHED: You are using the Free Tier. Please wait ${waitTime} seconds before scanning again.`);
+    // Improved Quota/Rate Limit detection
+    const errorMsg = error.message || "";
+    if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
+      const waitMatch = errorMsg.match(/retry in ([\d.]+)s/);
+      const waitTime = waitMatch ? waitMatch[1] : "some";
+      throw new Error(`API LIMIT REACHED: The Gemini Free Tier has a strict quota. Please wait about ${waitTime} seconds or upgrade your API key to continue scanning.`);
     }
     
-    throw new Error(error?.message || "Scan failed. Check your internet connection.");
+    throw new Error(errorMsg || "Scan failed. Please check your connection or location settings.");
   }
 };
 

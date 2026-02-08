@@ -61,26 +61,31 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
 
       autoTable(doc, {
         startY: 40,
-        head: [['Rank', 'Business Name', 'Phone', 'Rating', 'Distance', 'Google Maps Link']],
+        head: [['Rank', 'Business Name', 'Phone', 'Rating', 'Distance', 'Website', 'Google Maps Link']],
         body: sortedLeads.map(l => [
           `#${l.rank}`,
           l.businessName,
           l.phoneNumber,
           l.rating,
           l.distance,
+          l.website !== 'None' ? 'Visit Website' : 'No Website',
           'Click to Open Map'
         ]),
         theme: 'grid',
         headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
         styles: { fontSize: 9, cellPadding: 4 },
         columnStyles: {
-          5: { textColor: [79, 70, 229], fontStyle: 'bold' } // Specifically target the Maps Link column
+          5: { textColor: [79, 70, 229], fontStyle: 'bold' },
+          6: { textColor: [79, 70, 229], fontStyle: 'bold' }
         },
         didDrawCell: (data: any) => {
-          // Add digital interactive link for Column 5 (Maps Link)
-          if (data.section === 'body' && data.column.index === 5) {
+          if (data.section === 'body') {
             const lead = sortedLeads[data.row.index];
-            if (lead.locationLink && lead.locationLink !== '#') {
+            if (data.column.index === 5 && lead.website !== 'None') {
+              const url = lead.website.startsWith('http') ? lead.website : `https://${lead.website}`;
+              doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url });
+            }
+            if (data.column.index === 6 && lead.locationLink && lead.locationLink !== '#') {
               doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: lead.locationLink });
             }
           }
@@ -108,7 +113,7 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
         l.rating,
         `"${l.distance}"`,
         `"${l.locationLink}"`,
-        `"${l.website}"`
+        `"${l.website === 'None' ? 'N/A' : l.website}"`
       ].join(','))
     ];
     const csvContent = "data:text/csv;charset=utf-8," + csvRows.join("\n");
@@ -175,7 +180,7 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
                 Distance <SortIcon column="distance" />
               </th>
               <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Rating</th>
-              <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Action</th>
+              <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -192,8 +197,19 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
                 </td>
                 <td className="px-6 py-4">
                   <div className="text-sm font-semibold text-slate-700">{lead.phoneNumber}</div>
-                  {lead.website !== 'None' && (
-                    <div className="text-[10px] text-indigo-500 font-bold truncate max-w-[150px]">{lead.website}</div>
+                  {lead.website !== 'None' && lead.website !== '' ? (
+                    <div className="text-[10px] text-indigo-500 font-bold truncate max-w-[180px] hover:text-indigo-700">
+                      {lead.website}
+                    </div>
+                  ) : (
+                    <div className="mt-1">
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-black bg-slate-100 text-slate-400 border border-slate-200 uppercase tracking-tighter">
+                        <svg className="w-2.5 h-2.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        No Website Found
+                      </span>
+                    </div>
                   )}
                 </td>
                 <td className="px-6 py-4">
@@ -210,9 +226,41 @@ const LeadTable: React.FC<LeadTableProps> = ({ leads }) => {
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex gap-2">
-                    <a href={lead.locationLink} target="_blank" rel="noopener noreferrer" className="p-2.5 bg-white border border-slate-200 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-xl transition-all shadow-sm" title="Digital Map Link">
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    <a 
+                      href={lead.locationLink} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="p-2.5 bg-white border border-slate-200 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-xl transition-all shadow-sm" 
+                      title="Open Google Maps"
+                    >
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
                     </a>
+                    
+                    {lead.website !== 'None' && lead.website !== '' ? (
+                      <a 
+                        href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="p-2 bg-white border border-slate-200 text-indigo-500 hover:bg-indigo-500 hover:text-white rounded-xl transition-all shadow-sm" 
+                        title="Visit Website"
+                      >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                        </svg>
+                      </a>
+                    ) : (
+                      <div 
+                        className="p-2 bg-slate-50 border border-slate-100 text-slate-300 rounded-xl cursor-not-allowed opacity-40 flex items-center justify-center" 
+                        title="Website Unavailable"
+                      >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                        </svg>
+                      </div>
+                    )}
                   </div>
                 </td>
               </tr>
