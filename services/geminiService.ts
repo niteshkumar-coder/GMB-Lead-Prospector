@@ -11,31 +11,34 @@ export const fetchGmbLeads = async (
   const apiKey = (window as any).process?.env?.API_KEY || process.env.API_KEY;
   
   if (!apiKey || apiKey.trim() === "") {
-    throw new Error("API_KEY is missing. Please check your environment.");
+    throw new Error("API_KEY is missing. Please ensure your environment is configured.");
   }
 
   const ai = new GoogleGenAI({ apiKey });
+  // Gemini 2.5 Flash is required for Google Maps grounding
   const model = "gemini-2.5-flash"; 
   
   const origin = userCoords 
-    ? `Coordinates: ${userCoords.latitude}, ${userCoords.longitude}`
+    ? `GPS Coordinates (${userCoords.latitude}, ${userCoords.longitude})`
     : location;
 
-  // Simplified prompt to avoid model confusion and ensure tool usage
-  const prompt = `Search for "${keyword}" within ${radius}km of ${origin} using Google Maps.
+  const prompt = `GMB DEEP SCAN: Find ~100 businesses for "${keyword}" near ${origin} (Radius: ${radius}km).
   
-  EXTRACT: Approximately 100 businesses.
-  DISTANCE: Calculate precisely from the origin point.
-  FORMAT: Markdown table ONLY.
+  INSTRUCTIONS:
+  1. Use Google Maps tool to fetch REAL businesses.
+  2. List up to 100 results, especially those ranked below top 10.
+  3. Calculate distance EXACTLY from the origin provided.
+  4. Return ONLY a Markdown table with these columns: 
+  | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |
   
-  Columns: | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |`;
+  Format: Table only, no intro text.`;
 
   try {
     const response = await ai.models.generateContent({
       model: model,
       contents: prompt,
       config: {
-        tools: [{ googleMaps: {} }, { googleSearch: {} }],
+        tools: [{ googleMaps: {} }],
         toolConfig: {
           retrievalConfig: {
             latLng: userCoords ? {
@@ -45,7 +48,7 @@ export const fetchGmbLeads = async (
           }
         },
         maxOutputTokens: 30000,
-        temperature: 0.2
+        temperature: 0.1
       },
     });
 
@@ -53,13 +56,21 @@ export const fetchGmbLeads = async (
     const leads = parseLeadsFromMarkdown(text, keyword);
     
     if (leads.length === 0) {
-      throw new Error(`The scanner couldn't find "${keyword}" in this specific ${radius}km area. Try increasing the radius or using a simpler keyword.`);
+      throw new Error(`The scanner found 0 results for "${keyword}". Try a larger radius or check if location access is blocked.`);
     }
 
     return leads;
   } catch (error: any) {
-    console.error("Prospecting Error:", error);
-    throw new Error(error?.message || "Scan failed. Please try again.");
+    console.error("GMB Fetch Error:", error);
+    
+    // Check for Quota/Rate Limit error
+    if (error.message?.includes("429") || error.message?.includes("quota")) {
+      const waitMatch = error.message.match(/retry in ([\d.]+)s/);
+      const waitTime = waitMatch ? waitMatch[1] : "60";
+      throw new Error(`API LIMIT REACHED: You are using the Free Tier. Please wait ${waitTime} seconds before scanning again.`);
+    }
+    
+    throw new Error(error?.message || "Scan failed. Check your internet connection.");
   }
 };
 
@@ -70,7 +81,7 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
   
   const dataLines = lines.filter(line => {
     const pipes = (line.match(/\|/g) || []).length;
-    return pipes >= 5 && !line.includes('---') && !line.toLowerCase().includes('business name');
+    return pipes >= 6 && !line.includes('---') && !line.toLowerCase().includes('business name');
   });
 
   dataLines.forEach((line, index) => {
@@ -78,9 +89,9 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
       .map(p => p.trim())
       .filter((p, i, arr) => !(i === 0 && p === '') && !(i === arr.length - 1 && p === ''));
     
-    if (parts.length >= 5) {
-      const cleanName = parts[0].replace(/\*\*/g, '').replace(/`/g, '');
-      if (!cleanName || cleanName.length < 2) return;
+    if (parts.length >= 6) {
+      const cleanName = parts[0].replace(/\*\*/g, '').replace(/`/g, '').trim();
+      if (!cleanName) return;
 
       const rawRank = parts[2]?.replace(/[^0-9]/g, '') || '';
       const finalRank = parseInt(rawRank) || (index + 1);
