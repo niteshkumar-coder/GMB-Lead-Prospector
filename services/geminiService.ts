@@ -30,18 +30,17 @@ export const fetchGmbLeads = async (
     ? `GPS Coordinates (${userCoords.latitude}, ${userCoords.longitude})`
     : location;
 
-  const prompt = `GMB DEEP SCAN: Find ~100 businesses for "${keyword}" near ${origin} (Radius: ${radius}km).
+  // Reduced target to 40 to prevent internal Maps tool timeouts and 429s on Free Tier
+  const prompt = `GMB SCAN: Find 40 businesses for "${keyword}" near ${origin} (${radius}km).
   
-  CORE MISSION: 
-  Identify businesses ranking BELOW the top 5 GMB results for SEO/Marketing leads.
+  CRITICAL: Focus on businesses ranking rank 6 to 50 (below top 5).
   
   INSTRUCTIONS:
-  1. Use Google Maps tool for REAL results.
-  2. Provide up to 100 businesses.
-  3. Focus on Rank 6 to 100.
-  4. Distance origin: ${origin}.
-  5. Return ONLY a Markdown table: 
-  | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |`;
+  1. Use Google Maps tool.
+  2. Return ONLY a Markdown table: 
+  | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |
+  
+  Constraint: Table only, no text.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -57,7 +56,7 @@ export const fetchGmbLeads = async (
             } : undefined
           }
         },
-        maxOutputTokens: 30000,
+        maxOutputTokens: 20000,
         temperature: 0.1
       },
     });
@@ -66,7 +65,7 @@ export const fetchGmbLeads = async (
     const leads = parseLeadsFromMarkdown(text, keyword);
     
     if (leads.length === 0) {
-      throw new Error(`No businesses found. Try a different keyword or broader location.`);
+      throw new Error(`The scanner returned empty results. Try a broader search keyword.`);
     }
 
     return leads;
@@ -74,6 +73,7 @@ export const fetchGmbLeads = async (
     console.error("GMB Fetch Error:", error);
     
     const errorMsg = error.message || "";
+    // Resource Exhausted or 429 is common on Free Tier
     if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
       const waitMatch = errorMsg.match(/retry in ([\d.]+)s/);
       const waitSeconds = waitMatch ? Math.ceil(parseFloat(waitMatch[1])) : 60;
