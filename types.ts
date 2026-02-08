@@ -3,6 +3,7 @@ export interface Lead {
   id: string;
   businessName: string;
   phoneNumber: string;
+  address: string;
   rank: number;
   website: string;
   locationLink: string;
