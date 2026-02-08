@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { Lead } from "../types";
 
@@ -16,11 +17,10 @@ export const fetchGmbLeads = async (
   radius: number,
   userCoords?: { latitude: number, longitude: number }
 ): Promise<Lead[]> => {
-  // Always create a fresh instance to ensure it picks up any newly selected API keys
   const apiKey = process.env.API_KEY;
   
   if (!apiKey || apiKey.trim() === "") {
-    throw new Error("API_KEY is missing. Please ensure your environment is configured.");
+    throw new Error("API_KEY is missing. Please check your system configuration.");
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -32,7 +32,6 @@ export const fetchGmbLeads = async (
     : location;
 
   // Reduced to 15 leads per request. This is the "Sweet Spot" for Free Tier tool usage.
-  // We use "Lead Persistence" in the UI to build a bigger list over multiple small scans.
   const prompt = `GMB LEAD GEN: Find 15 businesses for "${keyword}" near ${origin} (${radius}km).
   
   TARGET: Businesses ranking rank 6 to 30.
@@ -62,7 +61,6 @@ export const fetchGmbLeads = async (
             } : undefined
           }
         },
-        // Recommendation: Avoid setting maxOutputTokens without a thinkingBudget as it may block responses in 2.5 series models.
         temperature: 0.1
       },
     });
@@ -71,7 +69,7 @@ export const fetchGmbLeads = async (
     const leads = parseLeadsFromMarkdown(text, keyword);
     
     if (leads.length === 0) {
-      throw new Error(`The API didn't return any table data. Try a simpler keyword.`);
+      throw new Error(`The API returned an empty response. Try a broader search keyword.`);
     }
 
     return leads;
@@ -80,19 +78,17 @@ export const fetchGmbLeads = async (
     
     const errorMsg = error.message || "";
     
-    // Check for "Requested entity was not found" - platform specific key error
     if (errorMsg.includes("Requested entity was not found")) {
-      throw new Error("API_KEY_INVALID: Please re-select your API key using the 'Select Key' button.");
+      throw new Error("API_KEY_ERROR: The current API key is invalid or not properly configured for Google Maps grounding.");
     }
 
-    // Capture precise wait time from 429 error headers if available
     if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
       const waitMatch = errorMsg.match(/retry in ([\d.]+)s/);
       const waitSeconds = waitMatch ? Math.ceil(parseFloat(waitMatch[1])) : 60;
-      throw new QuotaError("API Quota Reached (Free Tier)", waitSeconds);
+      throw new QuotaError("API Quota Reached", waitSeconds);
     }
     
-    throw new Error(errorMsg || "Scan failed. Check your internet connection.");
+    throw new Error(errorMsg || "Scan failed. Check your network connection.");
   }
 };
 
