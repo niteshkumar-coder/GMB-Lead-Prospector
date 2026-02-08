@@ -2,6 +2,15 @@
 import { GoogleGenAI } from "@google/genai";
 import { Lead } from "../types";
 
+export class QuotaError extends Error {
+  retryAfter: number;
+  constructor(message: string, retryAfter: number) {
+    super(message);
+    this.name = "QuotaError";
+    this.retryAfter = retryAfter;
+  }
+}
+
 export const fetchGmbLeads = async (
   keyword: string, 
   location: string, 
@@ -15,7 +24,6 @@ export const fetchGmbLeads = async (
   }
 
   const ai = new GoogleGenAI({ apiKey });
-  // Gemini 2.5 Flash is required for Google Maps grounding
   const model = "gemini-2.5-flash"; 
   
   const origin = userCoords 
@@ -25,17 +33,15 @@ export const fetchGmbLeads = async (
   const prompt = `GMB DEEP SCAN: Find ~100 businesses for "${keyword}" near ${origin} (Radius: ${radius}km).
   
   CORE MISSION: 
-  Identify businesses that are currently ranking BELOW the top 5 GMB results. These are prime leads for SEO/Marketing.
+  Identify businesses ranking BELOW the top 5 GMB results for SEO/Marketing leads.
   
   INSTRUCTIONS:
-  1. Use Google Maps tool to fetch REAL businesses in this area.
-  2. Provide a list of up to 100 businesses.
-  3. Include businesses with poor or mediocre rankings (Rank 6 to 100).
-  4. Calculate distance EXACTLY from: ${origin}.
-  5. Return ONLY a Markdown table with these columns: 
-  | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |
-  
-  Format: Table only. No conversational filler.`;
+  1. Use Google Maps tool for REAL results.
+  2. Provide up to 100 businesses.
+  3. Focus on Rank 6 to 100.
+  4. Distance origin: ${origin}.
+  5. Return ONLY a Markdown table: 
+  | Business Name | Phone | Rank | Website | Maps Link | Rating | Distance |`;
 
   try {
     const response = await ai.models.generateContent({
@@ -60,22 +66,21 @@ export const fetchGmbLeads = async (
     const leads = parseLeadsFromMarkdown(text, keyword);
     
     if (leads.length === 0) {
-      throw new Error(`No businesses found for "${keyword}" within ${radius}km. Try a broader search.`);
+      throw new Error(`No businesses found. Try a different keyword or broader location.`);
     }
 
     return leads;
   } catch (error: any) {
     console.error("GMB Fetch Error:", error);
     
-    // Improved Quota/Rate Limit detection
     const errorMsg = error.message || "";
     if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
       const waitMatch = errorMsg.match(/retry in ([\d.]+)s/);
-      const waitTime = waitMatch ? waitMatch[1] : "some";
-      throw new Error(`API LIMIT REACHED: The Gemini Free Tier has a strict quota. Please wait about ${waitTime} seconds or upgrade your API key to continue scanning.`);
+      const waitSeconds = waitMatch ? Math.ceil(parseFloat(waitMatch[1])) : 60;
+      throw new QuotaError("API Quota Reached (Free Tier)", waitSeconds);
     }
     
-    throw new Error(errorMsg || "Scan failed. Please check your connection or location settings.");
+    throw new Error(errorMsg || "Scan failed. Check your internet connection.");
   }
 };
 
