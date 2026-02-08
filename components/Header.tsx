@@ -1,15 +1,7 @@
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 
 const Header: React.FC = () => {
-  const [isConnected, setIsConnected] = useState(false);
-
-  useEffect(() => {
-    // Check if API key is present in environment
-    const key = typeof process !== 'undefined' ? process.env.API_KEY : undefined;
-    setIsConnected(!!key);
-  }, []);
-
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -24,16 +16,12 @@ const Header: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest transition-all ${isConnected ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
-            <span className={`h-2 w-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`}></span>
-            {isConnected ? 'API Connected' : 'API Offline'}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border bg-emerald-50 text-emerald-600 border-emerald-100 text-[10px] font-black uppercase tracking-widest">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            System Ready
           </div>
-          
-          <div className="hidden sm:block h-4 w-px bg-slate-200 mx-1"></div>
-          
           <div className="hidden sm:flex items-center gap-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Version</span>
-            <span className="text-[10px] font-black text-slate-900 bg-slate-100 px-2 py-0.5 rounded">2.5 PRO</span>
+            <span className="text-[10px] font-black text-slate-900 bg-slate-100 px-2 py-0.5 rounded uppercase tracking-tighter">V2.5 PRO</span>
           </div>
         </div>
       </div>

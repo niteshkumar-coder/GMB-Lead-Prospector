@@ -11,9 +11,6 @@ export class QuotaError extends Error {
   }
 }
 
-/**
- * Helper to extract numeric value from distance strings like "5.2 km" or "800 m"
- */
 const parseDistanceValue = (distStr: string): number => {
   if (!distStr) return 0;
   const clean = distStr.toLowerCase().replace(/,/g, '').trim();
@@ -30,11 +27,11 @@ export const fetchGmbLeads = async (
   radius: number,
   userCoords?: { latitude: number, longitude: number }
 ): Promise<Lead[]> => {
-  // Safe access to process.env
-  const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : undefined;
+  // Use a direct approach to get the key
+  const apiKey = process.env.API_KEY;
   
-  if (!apiKey) {
-    throw new Error("API_KEY not found in environment. If you just added it to Vercel, please REDEPLOY your project for changes to take effect.");
+  if (!apiKey || apiKey === "undefined" || apiKey.length < 5) {
+    throw new Error("System API Key is not detected. 1. Go to Vercel Settings -> Environment Variables. 2. Ensure Key is 'API_KEY'. 3. REDEPLOY your project.");
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -45,23 +42,10 @@ export const fetchGmbLeads = async (
     : location;
 
   const prompt = `GMB DEEP SCAN: Identify 15 businesses for "${keyword}" near ${origin}.
-  
-  STRICT RADIUS LIMIT: All businesses MUST be located within exactly ${radius}km of the starting point. 
-  DO NOT return any results located further than ${radius}km away. This is the highest priority.
-  
-  RANKING TARGET: Only return businesses ranking in positions 6 through 30 (strictly below the top 5 GMB results).
-  
-  REQUIRED DATA FIELDS FOR EACH BUSINESS:
-  1. Business Name
-  2. Phone Number (International format if possible)
-  3. Physical Address
-  4. Approximate Local Rank
-  5. Website URL (If none, write 'None')
-  6. Google Maps Link
-  7. Rating (numeric 0.0 - 5.0)
-  8. Exact Distance from ${origin} (specify km or m)
-  
-  OUTPUT: Provide a Markdown table with these columns ONLY. No preamble or chatty text.`;
+  STRICT RADIUS LIMIT: ${radius}km.
+  RANKING TARGET: Positions 6 through 30.
+  REQUIRED FIELDS: Name, Phone, Address, Rank, Website, Maps Link, Rating, Distance.
+  OUTPUT: Markdown table only.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -82,43 +66,32 @@ export const fetchGmbLeads = async (
     });
 
     const text = response.text || "";
-    if (!text.includes('|')) {
-       throw new Error("The scanner could not verify structured ranking data. Try a more specific business category or location.");
-    }
-
     const allLeads = parseLeadsFromMarkdown(text, keyword);
     
-    // CODE-LEVEL RADIUS ENFORCEMENT
-    const filteredLeads = allLeads.filter(lead => {
-      const distValue = parseDistanceValue(lead.distance);
-      return distValue <= radius;
-    });
+    const filteredLeads = allLeads.filter(lead => parseDistanceValue(lead.distance) <= radius);
 
     if (filteredLeads.length === 0 && allLeads.length > 0) {
-      throw new Error(`The scanner found leads, but they were all outside your ${radius}km limit. Try increasing the search radius.`);
+      throw new Error(`Results found but all were outside ${radius}km. Try a larger radius.`);
     }
 
     if (filteredLeads.length === 0) {
-      throw new Error("No qualifying businesses found in the specified range. Try a broader keyword.");
+      throw new Error("No businesses found in range. Try different keywords.");
     }
 
     return filteredLeads;
   } catch (error: any) {
-    console.error("GMB Internal Error:", error);
+    console.error("GMB Scan Error:", error);
+    const errorMsg = error.message || "";
     
-    const errorMsg = error.message || "Unknown error";
-    
-    if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
-      const waitMatch = errorMsg.match(/retry in ([\d.]+)s/);
-      const waitSeconds = waitMatch ? Math.ceil(parseFloat(waitMatch[1])) : 60;
-      throw new QuotaError("Maps network congested. Re-syncing...", waitSeconds);
+    if (errorMsg.includes("429") || errorMsg.includes("quota")) {
+      throw new QuotaError("API Quota limit reached. Retrying shortly...", 30);
     }
     
-    if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("API Key") || errorMsg.includes("not found in environment")) {
-      throw new Error("Authentication failed. Ensure API_KEY is set in Vercel and the project is Redeployed.");
+    if (errorMsg.includes("API key not valid") || errorMsg.includes("API_KEY")) {
+      throw new Error("API Key Invalid. Please check your Vercel Environment Variables and REDEPLOY.");
     }
     
-    throw new Error(errorMsg);
+    throw new Error(errorMsg || "Connection failed. Please try again.");
   }
 };
 
@@ -133,23 +106,14 @@ const parseLeadsFromMarkdown = (md: string, keyword: string): Lead[] => {
   });
 
   dataLines.forEach((line, index) => {
-    const parts = line.split('|')
-      .map(p => p.trim())
-      .filter((p, i, arr) => !(i === 0 && p === '') && !(i === arr.length - 1 && p === ''));
-    
+    const parts = line.split('|').map(p => p.trim()).filter(p => p !== '');
     if (parts.length >= 7) {
-      const cleanName = parts[0].replace(/\*\*/g, '').replace(/`/g, '').trim();
-      if (!cleanName) return;
-
-      const rawRank = parts[3]?.replace(/[^0-9]/g, '') || '';
-      const finalRank = parseInt(rawRank) || (index + 6); 
-
       leads.push({
-        id: `lead-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`,
-        businessName: cleanName,
+        id: `l-${Date.now()}-${index}`,
+        businessName: parts[0].replace(/\*\*/g, ''),
         phoneNumber: parts[1] || 'N/A',
         address: parts[2] || 'N/A',
-        rank: finalRank,
+        rank: parseInt(parts[3]) || (index + 6),
         website: parts[4] || 'None',
         locationLink: parts[5] || '#',
         rating: parseFloat(parts[6]) || 0,
