@@ -8,7 +8,6 @@ import { Lead } from './types';
 import { fetchGmbLeads, QuotaError } from './services/geminiService';
 
 const App: React.FC = () => {
-  const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchProgress, setSearchProgress] = useState(0);
@@ -21,24 +20,6 @@ const App: React.FC = () => {
   
   const progressInterval = useRef<number | null>(null);
   const countdownInterval = useRef<number | null>(null);
-
-  useEffect(() => {
-    const checkKey = async () => {
-      try {
-        const selected = await window.aistudio.hasSelectedApiKey();
-        setHasKey(selected);
-      } catch (e) {
-        setHasKey(!!process.env.API_KEY);
-      }
-    };
-    checkKey();
-  }, []);
-
-  const handleOpenKeyDialog = async () => {
-    await window.aistudio.openSelectKey();
-    // Use timeout to allow background process to update the environment
-    setTimeout(() => setHasKey(true), 500);
-  };
 
   const requestLocation = useCallback(() => {
     setGeoStatus('detecting');
@@ -57,8 +38,8 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (hasKey) requestLocation();
-  }, [hasKey, requestLocation]);
+    requestLocation();
+  }, [requestLocation]);
 
   const handleCancelCooldown = () => {
     if (countdownInterval.current) clearInterval(countdownInterval.current);
@@ -122,12 +103,7 @@ const App: React.FC = () => {
         setRetryTimer(err.retryAfter);
         setSearchStatus('Scanner in Standby...');
       } else {
-        const msg = err?.message || "An error occurred";
-        // Only trigger the setup screen if it's definitely an auth error
-        if (msg.toLowerCase().includes("api key") || msg.toLowerCase().includes("not found")) {
-          setHasKey(false);
-        }
-        setError(msg);
+        setError(err?.message || "An error occurred during the scan.");
       }
     } finally {
       setTimeout(() => {
@@ -136,40 +112,6 @@ const App: React.FC = () => {
       }, 500);
     }
   }, [userCoords, retryTimer]);
-
-  if (hasKey === false) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col">
-        <Header />
-        <main className="flex-grow flex items-center justify-center p-4">
-          <div className="max-w-md w-full bg-white rounded-[2.5rem] shadow-2xl p-10 text-center border border-slate-200">
-            <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-inner">
-              <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-black text-slate-900 mb-4 tracking-tight">Scanner Setup Required</h2>
-            <p className="text-slate-500 text-sm mb-8 leading-relaxed">
-              To perform deep-scans on Google Maps, you must link your paid Google Cloud project.
-            </p>
-            <button
-              onClick={handleOpenKeyDialog}
-              className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-200 active:scale-95 mb-4"
-            >
-              CONNECT API KEY
-            </button>
-            <a 
-              href="https://ai.google.dev/gemini-api/docs/billing" 
-              target="_blank" 
-              className="text-[10px] text-slate-400 font-bold uppercase tracking-widest hover:text-indigo-600 transition-colors"
-            >
-              Learn about Billing & Setup
-            </a>
-          </div>
-        </main>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -192,12 +134,6 @@ const App: React.FC = () => {
           </div>
           
           <div className="flex gap-2">
-            <button 
-              onClick={() => setHasKey(false)} 
-              className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-indigo-600 transition-colors border border-slate-200 px-3 py-1.5 rounded-full"
-            >
-              Update API
-            </button>
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border ${geoStatus === 'active' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
               <span className={`h-2 w-2 rounded-full ${geoStatus === 'active' ? 'bg-indigo-500 animate-pulse' : 'bg-slate-300'}`}></span>
               {geoStatus === 'active' ? 'GPS Radius Enabled' : 'City Scan Mode'}

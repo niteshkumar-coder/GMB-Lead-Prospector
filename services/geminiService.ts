@@ -32,7 +32,7 @@ export const fetchGmbLeads = async (
 ): Promise<Lead[]> => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    throw new Error("API Key is required to perform this scan. Please connect your account.");
+    throw new Error("System API Key is missing. Please contact the administrator.");
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -113,7 +113,7 @@ export const fetchGmbLeads = async (
     }
     
     if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("API Key")) {
-      throw new Error("API Key issue detected. Please re-authenticate the scanner.");
+      throw new Error("The scanner encountered an authorization error with the Maps network.");
     }
     
     throw new Error(errorMsg);
